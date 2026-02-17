@@ -21,21 +21,21 @@ import FloatingBackground from "../components/FloatingBackground";
 const INTRO_STEPS = [
   {
     id: 1,
-    title: "Conoce a ForesyGuy",
+    title: "Conoce a milo",
     text: "Tu asistente te acompaña para convertir decisiones financieras complejas en acciones claras y medibles.",
-    image: require("../../assets/foresyguy/1.webp"),
+    image: require("../../assets/milo/1.webp"),
   },
   {
     id: 2,
-    title: "Simula antes de decidir",
-    text: "Proyecta escenarios con tu estado base y visualiza impacto futuro para elegir con más confianza.",
-    image: require("../../assets/foresyguy/2.webp"),
+    title: "Pregunta en lenguaje natural",
+    text: "Escribe como hablas. milo entiende tu contexto y te responde con pasos claros y accionables.",
+    image: require("../../assets/milo/2.webp"),
   },
   {
     id: 3,
-    title: "Compara y ejecuta",
-    text: "Contrasta opciones A/B/C, detecta la mejor ruta y avanza con un plan financiero inteligente.",
-    image: require("../../assets/foresyguy/3.webp"),
+    title: "Avanza con claridad",
+    text: "Recibe recomendaciones rápidas para decidir mejor en tu día a día financiero, todo desde el chat.",
+    image: require("../../assets/milo/3.webp"),
   },
 ];
 

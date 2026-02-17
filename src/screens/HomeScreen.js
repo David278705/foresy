@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import {
+  Image,
   View,
   Text,
   StyleSheet,
@@ -23,12 +24,10 @@ import FloatingBackground from "../components/FloatingBackground";
 const AnimatedTouchableOpacity =
   Animated.createAnimatedComponent(TouchableOpacity);
 
-const ActionCard = ({
-  title,
-  description,
-  buttonLabel,
+const ChatEntryCard = ({
   onPress,
   delay,
+  description,
   theme,
   globalStyles,
   styles,
@@ -61,7 +60,7 @@ const ActionCard = ({
     <Animated.View
       style={[globalStyles.glassCard, styles.card, cardAnimatedStyle]}
     >
-      <Text style={styles.cardTitle}>{title}</Text>
+      <Text style={styles.cardTitle}>Hablar con milo</Text>
       <Text style={styles.cardDescription}>{description}</Text>
       <AnimatedTouchableOpacity
         style={[styles.button, buttonAnimatedStyle]}
@@ -77,7 +76,7 @@ const ActionCard = ({
           colors={theme.gradients.primary}
           style={globalStyles.primaryButton}
         >
-          <Text style={globalStyles.primaryButtonText}>{buttonLabel}</Text>
+          <Text style={globalStyles.primaryButtonText}>Ir al chat</Text>
         </LinearGradient>
       </AnimatedTouchableOpacity>
     </Animated.View>
@@ -88,12 +87,10 @@ const HomeScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const globalStyles = createGlobalStyles(theme);
   const styles = createStyles(theme);
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const welcomeOpacity = useSharedValue(0);
   const welcomeTranslateY = useSharedValue(16);
-  const logoutScale = useSharedValue(1);
-
   useEffect(() => {
     welcomeOpacity.value = withTiming(1, {
       duration: 240,
@@ -110,10 +107,6 @@ const HomeScreen = ({ navigation }) => {
     transform: [{ translateY: welcomeTranslateY.value }],
   }));
 
-  const logoutAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoutScale.value }],
-  }));
-
   return (
     <LinearGradient
       colors={theme.gradients.background}
@@ -128,7 +121,7 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.miniTitle}>DASHBOARD IA</Text>
           <Text style={globalStyles.pageTitle}>Foresy</Text>
           <Text style={globalStyles.pageSubtitle}>
-            Visión inteligente de decisiones financieras en tiempo real.
+            Tu copiloto financiero conversacional.
           </Text>
         </View>
 
@@ -136,54 +129,20 @@ const HomeScreen = ({ navigation }) => {
           Bienvenido, {user?.email || "Usuario"}
         </Animated.Text>
 
-        <ActionCard
-          title="Tu Estado Base"
-          description="Configura ingresos, gastos y metas para que el motor de simulación aprenda tu contexto."
-          buttonLabel="Configurar"
-          onPress={() => navigation.navigate("EstadoBase")}
-          delay={100}
+        <Image
+          source={require("../../assets/milo/3.webp")}
+          style={styles.heroMascot}
+          resizeMode="contain"
+        />
+
+        <ChatEntryCard
+          description="Conversa con milo para resolver dudas y recibir guía financiera paso a paso."
+          onPress={() => navigation.navigate("Chat")}
+          delay={120}
           theme={theme}
           globalStyles={globalStyles}
           styles={styles}
         />
-
-        <ActionCard
-          title="Simulaciones"
-          description="Proyecta escenarios y compara resultados antes de tomar decisiones importantes."
-          buttonLabel="Simular"
-          onPress={() => navigation.navigate("Simulaciones")}
-          delay={180}
-          theme={theme}
-          globalStyles={globalStyles}
-          styles={styles}
-        />
-
-        <ActionCard
-          title="Comparador"
-          description="Contrasta alternativas A/B/C con enfoque en impacto financiero y riesgo."
-          buttonLabel="Comparar"
-          onPress={() => navigation.navigate("Comparador")}
-          delay={260}
-          theme={theme}
-          globalStyles={globalStyles}
-          styles={styles}
-        />
-
-        <AnimatedTouchableOpacity
-          style={[styles.logoutButton, logoutAnimatedStyle]}
-          onPress={logout}
-          onPressIn={() => {
-            logoutScale.value = withSpring(0.97, {
-              damping: 16,
-              stiffness: 240,
-            });
-          }}
-          onPressOut={() => {
-            logoutScale.value = withSpring(1, { damping: 16, stiffness: 240 });
-          }}
-        >
-          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-        </AnimatedTouchableOpacity>
       </ScrollView>
     </LinearGradient>
   );
@@ -209,7 +168,12 @@ const createStyles = (theme) =>
       fontSize: 18,
       fontWeight: "600",
       color: theme.colors.textSecondary,
-      marginBottom: theme.spacing.lg,
+      marginBottom: theme.spacing.md,
+    },
+    heroMascot: {
+      width: "100%",
+      height: 220,
+      marginBottom: theme.spacing.md,
     },
     card: {
       marginBottom: theme.spacing.md,
@@ -229,20 +193,6 @@ const createStyles = (theme) =>
     button: {
       borderRadius: theme.radius.md,
       overflow: "hidden",
-    },
-    logoutButton: {
-      marginTop: theme.spacing.sm,
-      borderRadius: theme.radius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surfaceElevated,
-      paddingVertical: 14,
-      alignItems: "center",
-    },
-    logoutButtonText: {
-      color: theme.colors.textPrimary,
-      fontSize: 16,
-      fontWeight: "700",
     },
   });
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { Image } from "react-native";
 import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -11,9 +12,7 @@ import { useTheme } from "../context/ThemeContext";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import HomeScreen from "../screens/HomeScreen";
-import EstadoBaseScreen from "../screens/EstadoBaseScreen";
-import SimulacionesScreen from "../screens/SimulacionesScreen";
-import ComparadorScreen from "../screens/ComparadorScreen";
+import ChatScreen from "../screens/ChatScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import IntroScreen from "../screens/IntroScreen";
 
@@ -21,10 +20,7 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const screenIcon = {
-  Inicio: "sparkles",
-  EstadoBase: "bar-chart",
-  Simulaciones: "pulse",
-  Comparador: "git-compare",
+  Inicio: "home",
   Perfil: "person-circle",
 };
 
@@ -52,23 +48,32 @@ const MainTabs = () => {
           fontSize: 11,
           fontWeight: "700",
         },
-        tabBarIcon: ({ color, size, focused }) => (
-          <Ionicons
-            name={screenIcon[route.name] || "ellipse"}
-            size={focused ? size + 2 : size}
-            color={color}
-          />
-        ),
+        tabBarIcon: ({ color, size, focused }) => {
+          if (route.name === "Chat") {
+            return (
+              <Image
+                source={require("../../assets/milo/face.png")}
+                style={{
+                  width: focused ? size + 6 : size + 4,
+                  height: focused ? size + 6 : size + 4,
+                }}
+                resizeMode="contain"
+              />
+            );
+          }
+
+          return (
+            <Ionicons
+              name={screenIcon[route.name] || "ellipse"}
+              size={focused ? size + 2 : size}
+              color={color}
+            />
+          );
+        },
       })}
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
-      <Tab.Screen
-        name="EstadoBase"
-        component={EstadoBaseScreen}
-        options={{ title: "Estado Base" }}
-      />
-      <Tab.Screen name="Simulaciones" component={SimulacionesScreen} />
-      <Tab.Screen name="Comparador" component={ComparadorScreen} />
+      <Tab.Screen name="Chat" component={ChatScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );
