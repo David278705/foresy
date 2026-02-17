@@ -61,7 +61,6 @@ const EmailLoginScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.header}>
-              <Text style={styles.badge}>CORREO Y CONTRASEÑA</Text>
               <Text style={styles.title}>Inicia con tu correo</Text>
               <Text style={styles.subtitle}>
                 Accede con tu cuenta para continuar en Foresy.

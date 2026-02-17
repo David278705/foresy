@@ -9,7 +9,8 @@ import {
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { auth } from "../services/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../services/firebaseConfig";
 
 const AuthContext = createContext({});
 const INTRO_SEEN_PREFIX = "@foresy_intro_seen_";
@@ -54,6 +55,37 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
+  const [financialProfile, setFinancialProfile] = useState(null);
+  const [needsFinancialOnboarding, setNeedsFinancialOnboarding] =
+    useState(false);
+
+  const loadFinancialProfile = async (uid) => {
+    try {
+      const profileRef = doc(db, "financialProfiles", uid);
+      const snapshot = await getDoc(profileRef);
+
+      if (!snapshot.exists()) {
+        setFinancialProfile(null);
+        setNeedsFinancialOnboarding(true);
+        return;
+      }
+
+      const data = snapshot.data();
+      const isCompleted = Boolean(data?.completed);
+
+      if (!isCompleted) {
+        setFinancialProfile(data || null);
+        setNeedsFinancialOnboarding(true);
+        return;
+      }
+
+      setFinancialProfile(data);
+      setNeedsFinancialOnboarding(false);
+    } catch (error) {
+      setFinancialProfile(null);
+      setNeedsFinancialOnboarding(true);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -81,8 +113,12 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
           setShowIntro(true);
         }
+
+        await loadFinancialProfile(user.uid);
       } else {
         setShowIntro(false);
+        setFinancialProfile(null);
+        setNeedsFinancialOnboarding(false);
       }
       setLoading(false);
     });
@@ -143,10 +179,17 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setShowIntro(false);
+      setFinancialProfile(null);
+      setNeedsFinancialOnboarding(false);
       await signOut(auth);
     } catch (error) {
       throw error;
     }
+  };
+
+  const refreshFinancialProfile = async () => {
+    if (!user?.uid) return;
+    await loadFinancialProfile(user.uid);
   };
 
   const markIntroSeen = async () => {
@@ -171,6 +214,8 @@ export const AuthProvider = ({ children }) => {
         user,
         loading,
         showIntro,
+        financialProfile,
+        needsFinancialOnboarding,
         signUp,
         signIn,
         signInWithGoogle,
@@ -178,6 +223,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         markIntroSeen,
         replayIntro,
+        refreshFinancialProfile,
       }}
     >
       {children}

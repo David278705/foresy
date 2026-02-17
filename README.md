@@ -72,7 +72,28 @@ Ejemplo en `app.json`:
 }
 ```
 
-### 4. Ejecutar la aplicación
+### 4. Configurar IA para onboarding financiero obligatorio
+
+Solo necesitas completar la API key en `app.json`:
+
+```json
+"extra": {
+  "openai": {
+    "apiKey": "TU_OPENAI_API_KEY",
+    "model": "gpt-4o-mini",
+    "transcriptionModel": "gpt-4o-mini-transcribe"
+  }
+}
+```
+
+Con eso, el flujo queda así:
+
+1. Intro onboarding
+2. Formulario financiero obligatorio (audio o texto con IA)
+3. Guardado en Firebase por `uid` del usuario
+4. Acceso a la app + resumen financiero en Inicio
+
+### 5. Ejecutar la aplicación
 
 ```bash
 npm start

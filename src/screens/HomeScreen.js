@@ -87,7 +87,7 @@ const HomeScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const globalStyles = createGlobalStyles(theme);
   const styles = createStyles(theme);
-  const { user } = useAuth();
+  const { user, financialProfile } = useAuth();
 
   const welcomeOpacity = useSharedValue(0);
   const welcomeTranslateY = useSharedValue(16);
@@ -143,6 +143,15 @@ const HomeScreen = ({ navigation }) => {
           globalStyles={globalStyles}
           styles={styles}
         />
+
+        {financialProfile?.profileSummary ? (
+          <View style={[globalStyles.glassCard, styles.summaryCard]}>
+            <Text style={styles.summaryTitle}>Tu resumen financiero IA</Text>
+            <Text style={styles.summaryText}>
+              {financialProfile.profileSummary}
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
     </LinearGradient>
   );
@@ -193,6 +202,20 @@ const createStyles = (theme) =>
     button: {
       borderRadius: theme.radius.md,
       overflow: "hidden",
+    },
+    summaryCard: {
+      marginBottom: theme.spacing.md,
+    },
+    summaryTitle: {
+      color: theme.colors.textPrimary,
+      fontSize: 18,
+      fontWeight: "800",
+      marginBottom: theme.spacing.sm,
+    },
+    summaryText: {
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 22,
     },
   });
 

@@ -14,14 +14,17 @@ import EmailLoginScreen from "../screens/EmailLoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import HomeScreen from "../screens/HomeScreen";
 import ChatScreen from "../screens/ChatScreen";
+import CalendarioScreen from "../screens/CalendarioScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import IntroScreen from "../screens/IntroScreen";
+import FinancialSetupScreen from "../screens/FinancialSetupScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const screenIcon = {
   Inicio: "home",
+  Calendario: "calendar",
   Perfil: "person-circle",
 };
 
@@ -75,6 +78,7 @@ const MainTabs = () => {
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Chat" component={ChatScreen} />
+      <Tab.Screen name="Calendario" component={CalendarioScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -82,7 +86,7 @@ const MainTabs = () => {
 
 const AppNavigator = () => {
   const { theme } = useTheme();
-  const { user, loading, showIntro } = useAuth();
+  const { user, loading, showIntro, needsFinancialOnboarding } = useAuth();
 
   const navigationTheme = {
     ...DefaultTheme,
@@ -143,6 +147,16 @@ const AppNavigator = () => {
               <Stack.Screen
                 name="Intro"
                 component={IntroScreen}
+                options={{
+                  headerShown: false,
+                  gestureEnabled: false,
+                  animation: "fade",
+                }}
+              />
+            ) : needsFinancialOnboarding ? (
+              <Stack.Screen
+                name="FinancialSetup"
+                component={FinancialSetupScreen}
                 options={{
                   headerShown: false,
                   gestureEnabled: false,

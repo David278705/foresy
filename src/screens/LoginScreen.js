@@ -177,7 +177,6 @@ const LoginScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.header}>
-              <Text style={styles.badge}>NUEVO INICIO</Text>
               <Image
                 source={require("../../assets/milo/face.png")}
                 style={styles.mascot}
@@ -238,7 +237,9 @@ const LoginScreen = ({ navigation }) => {
                   size={18}
                   color={theme.colors.textPrimary}
                 />
-                <Text style={styles.socialButtonText}>Continuar con correo</Text>
+                <Text style={styles.socialButtonText}>
+                  Continuar con correo
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
