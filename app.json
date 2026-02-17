@@ -2,6 +2,7 @@
   "expo": {
     "name": "foresy",
     "slug": "foresy",
+    "scheme": "foresy",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/milo/icon.png",
@@ -12,12 +13,16 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.foresy.app",
+      "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
-        "CADisableMinimumFrameDurationOnPhone": true
+        "CADisableMinimumFrameDurationOnPhone": true,
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "com.foresy.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/milo/icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +30,20 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-apple-authentication"
+    ],
+    "extra": {
+      "googleAuth": {
+        "expoClientId": "994901631529-fkbgl8dq5lg3ca0imom8hfhk9cmf5k6o.apps.googleusercontent.com",
+        "iosClientId": "994901631529-0p8iks822r1pie8hqh62cjfq54r2p6e3.apps.googleusercontent.com",
+        "androidClientId": "994901631529-rl0qjv92tk6o3rqnf436l3vjc46qkk5v.apps.googleusercontent.com",
+        "webClientId": "994901631529-fkbgl8dq5lg3ca0imom8hfhk9cmf5k6o.apps.googleusercontent.com"
+      },
+      "eas": {
+        "projectId": "894813a1-b4c0-4d20-a392-0aa4baa22a10"
+      }
     }
   }
 }

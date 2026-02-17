@@ -10,6 +10,7 @@ import { useTheme } from "../context/ThemeContext";
 
 // Screens
 import LoginScreen from "../screens/LoginScreen";
+import EmailLoginScreen from "../screens/EmailLoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import HomeScreen from "../screens/HomeScreen";
 import ChatScreen from "../screens/ChatScreen";
@@ -121,6 +122,14 @@ const AppNavigator = () => {
               name="Login"
               component={LoginScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="EmailLogin"
+              component={EmailLoginScreen}
+              options={{
+                title: "",
+                headerShown: true,
+              }}
             />
             <Stack.Screen
               name="Register"

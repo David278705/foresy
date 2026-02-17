@@ -1,76 +1,41 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  View,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  StyleSheet,
-  Alert,
+  View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { useAuth } from "../context/AuthContext";
+import FloatingBackground from "../components/FloatingBackground";
 import { createGlobalStyles } from "../constants/globalStyles";
 import { useTheme } from "../context/ThemeContext";
-import FloatingBackground from "../components/FloatingBackground";
+import { useAuth } from "../context/AuthContext";
 
-const RegisterScreen = ({ navigation }) => {
+const EmailLoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { theme } = useTheme();
   const globalStyles = createGlobalStyles(theme);
   const styles = createStyles(theme);
-  const { signUp } = useAuth();
-  const cardOpacity = useSharedValue(0);
-  const cardY = useSharedValue(20);
+  const { signIn } = useAuth();
 
-  useEffect(() => {
-    cardOpacity.value = withTiming(1, {
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-    });
-    cardY.value = withTiming(0, {
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [cardOpacity, cardY]);
-
-  const cardAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: cardOpacity.value,
-    transform: [{ translateY: cardY.value }],
-  }));
-
-  const handleRegister = async () => {
-    if (!email || !password || !confirmPassword) {
-      Alert.alert("Error", "Por favor completa todos los campos");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert("Error", "Las contraseñas no coinciden");
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres");
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Por favor ingresa email y contraseña");
       return;
     }
 
     setLoading(true);
     try {
-      await signUp(email, password);
+      await signIn(email, password);
     } catch (error) {
       Alert.alert("Error", error.message);
     } finally {
@@ -96,17 +61,16 @@ const RegisterScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.header}>
-              <Text style={styles.badge}>BIENVENIDO</Text>
-              <Text style={styles.title}>Crea tu cuenta</Text>
+              <Text style={styles.badge}>CORREO Y CONTRASEÑA</Text>
+              <Text style={styles.title}>Inicia con tu correo</Text>
               <Text style={styles.subtitle}>
-                Empieza tu plan financiero inteligente hoy.
+                Accede con tu cuenta para continuar en Foresy.
               </Text>
             </View>
 
-            <Animated.View
-              style={[globalStyles.glassCard, styles.form, cardAnimatedStyle]}
-            >
-              <Text style={styles.sectionTitle}>Registro con correo</Text>
+            <View style={[globalStyles.glassCard, styles.form]}>
+              <Text style={styles.sectionTitle}>Entrar con correo</Text>
+
               <TextInput
                 style={[globalStyles.input, styles.input]}
                 placeholder="Correo electrónico"
@@ -124,18 +88,10 @@ const RegisterScreen = ({ navigation }) => {
                 onChangeText={setPassword}
                 secureTextEntry
               />
-              <TextInput
-                style={[globalStyles.input, styles.input]}
-                placeholder="Confirmar contraseña"
-                placeholderTextColor={theme.colors.textMuted}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-              />
 
               <TouchableOpacity
                 style={styles.button}
-                onPress={handleRegister}
+                onPress={handleLogin}
                 disabled={loading}
               >
                 <LinearGradient
@@ -143,18 +99,18 @@ const RegisterScreen = ({ navigation }) => {
                   style={globalStyles.primaryButton}
                 >
                   <Text style={globalStyles.primaryButtonText}>
-                    {loading ? "Creando cuenta..." : "Crear cuenta"}
+                    {loading ? "Entrando..." : "Entrar"}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.linkButton}
-                onPress={() => navigation.navigate("Login")}
+                onPress={() => navigation.navigate("Register")}
               >
-                <Text style={styles.linkText}>Ya tengo una cuenta</Text>
+                <Text style={styles.linkText}>Crear cuenta nueva</Text>
               </TouchableOpacity>
-            </Animated.View>
+            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -182,14 +138,14 @@ const createStyles = (theme) =>
       paddingVertical: 6,
       borderRadius: 999,
       backgroundColor: theme.colors.badgeBackground,
-      color: theme.colors.accent,
+      color: theme.colors.primary,
       fontSize: 11,
       fontWeight: "700",
       marginBottom: theme.spacing.sm,
     },
     title: {
       color: theme.colors.textPrimary,
-      fontSize: 35,
+      fontSize: 34,
       fontWeight: "800",
       lineHeight: 40,
     },
@@ -203,7 +159,7 @@ const createStyles = (theme) =>
     },
     sectionTitle: {
       color: theme.colors.textPrimary,
-      fontSize: 23,
+      fontSize: 24,
       fontWeight: "800",
       marginBottom: theme.spacing.md,
     },
@@ -224,4 +180,4 @@ const createStyles = (theme) =>
     },
   });
 
-export default RegisterScreen;
+export default EmailLoginScreen;

@@ -2,7 +2,10 @@ import React, { createContext, useState, useEffect, useContext } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  OAuthProvider,
   signInWithEmailAndPassword,
+  signInWithCredential,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
@@ -12,6 +15,40 @@ const AuthContext = createContext({});
 const INTRO_SEEN_PREFIX = "@foresy_intro_seen_";
 
 const getIntroSeenKey = (uid) => `${INTRO_SEEN_PREFIX}${uid}`;
+
+const getAuthErrorMessage = (error) => {
+  const code = error?.code || "";
+
+  if (code === "auth/invalid-credential") {
+    return "Credenciales inválidas. Verifica tus datos e inténtalo de nuevo.";
+  }
+
+  if (code === "auth/invalid-email") {
+    return "El correo no es válido.";
+  }
+
+  if (code === "auth/user-not-found") {
+    return "No existe una cuenta con este correo.";
+  }
+
+  if (code === "auth/wrong-password") {
+    return "La contraseña es incorrecta.";
+  }
+
+  if (code === "auth/email-already-in-use") {
+    return "Este correo ya está registrado.";
+  }
+
+  if (code === "auth/weak-password") {
+    return "La contraseña debe tener al menos 6 caracteres.";
+  }
+
+  if (code === "auth/network-request-failed") {
+    return "No hay conexión. Revisa internet e inténtalo de nuevo.";
+  }
+
+  return error?.message || "Ocurrió un error de autenticación.";
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -66,7 +103,7 @@ export const AuthProvider = ({ children }) => {
       setShowIntro(true);
       return result;
     } catch (error) {
-      throw error;
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
@@ -75,7 +112,31 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithEmailAndPassword(auth, email, password);
       return result;
     } catch (error) {
-      throw error;
+      throw new Error(getAuthErrorMessage(error));
+    }
+  };
+
+  const signInWithGoogle = async (idToken) => {
+    try {
+      const credential = GoogleAuthProvider.credential(idToken);
+      return await signInWithCredential(auth, credential);
+    } catch (error) {
+      throw new Error(getAuthErrorMessage(error));
+    }
+  };
+
+  const signInWithApple = async ({ idToken, rawNonce }) => {
+    try {
+      const provider = new OAuthProvider("apple.com");
+      const credential = provider.credential({ idToken, rawNonce });
+      return await signInWithCredential(auth, credential);
+    } catch (error) {
+      if (error?.code === "auth/invalid-credential") {
+        throw new Error(
+          "Apple devolvió credenciales inválidas. Verifica en Firebase Authentication > Apple (Service ID, Team ID, Key ID y private key), que el Bundle ID sea com.foresy.app y que estés probando en build iOS con Sign in with Apple habilitado.",
+        );
+      }
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
@@ -112,6 +173,8 @@ export const AuthProvider = ({ children }) => {
         showIntro,
         signUp,
         signIn,
+        signInWithGoogle,
+        signInWithApple,
         logout,
         markIntroSeen,
         replayIntro,

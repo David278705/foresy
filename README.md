@@ -29,7 +29,7 @@ npm install
 ### 2. Configurar Firebase
 
 1. Crea un proyecto en [Firebase Console](https://console.firebase.google.com/)
-2. Activa Authentication (Email/Password)
+2. Activa Authentication (Email/Password, Google y Apple)
 3. Activa Firestore Database
 4. Copia tu configuración de Firebase
 5. Actualiza `src/services/firebaseConfig.js` con tus credenciales:
@@ -41,11 +41,38 @@ const firebaseConfig = {
   projectId: "TU_PROJECT_ID",
   storageBucket: "TU_STORAGE_BUCKET",
   messagingSenderId: "TU_MESSAGING_SENDER_ID",
-  appId: "TU_APP_ID"
+  appId: "TU_APP_ID",
 };
 ```
 
-### 3. Ejecutar la aplicación
+### 3. Configurar login social (Google + Apple)
+
+1. En Google Cloud Console crea los OAuth Client IDs para Android, iOS, Web y Expo.
+2. En `app.json` agrega esos IDs en `expo.extra.googleAuth`.
+3. En Firebase Authentication habilita el proveedor **Google**.
+4. En iOS, habilita **Sign In with Apple** en Apple Developer y en Firebase Authentication habilita **Apple**.
+5. Ejecuta con build nativa (`eas build` o prebuild) para probar Apple Sign-In y Google nativo de forma completa.
+
+Ejemplo en `app.json`:
+
+```json
+"expo": {
+  "scheme": "foresy",
+  "ios": {
+    "usesAppleSignIn": true
+  },
+  "extra": {
+    "googleAuth": {
+      "expoClientId": "",
+      "iosClientId": "",
+      "androidClientId": "",
+      "webClientId": ""
+    }
+  }
+}
+```
+
+### 4. Ejecutar la aplicación
 
 ```bash
 npm start
@@ -82,6 +109,7 @@ foresy/
 ## 🎯 Roadmap
 
 ### MVP (Fase 1)
+
 - [x] Autenticación con Firebase
 - [x] Navegación básica
 - [ ] Configuración de Estado Base
@@ -89,12 +117,14 @@ foresy/
 - [ ] Visualizaciones básicas
 
 ### Fase 2
+
 - [ ] Simulaciones avanzadas
 - [ ] Comparador A/B/C
 - [ ] Guardado de escenarios
 - [ ] Alertas preventivas
 
 ### Fase 3
+
 - [ ] Modelo Premium
 - [ ] Simulaciones de largo plazo
 - [ ] Modo pareja

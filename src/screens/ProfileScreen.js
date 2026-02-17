@@ -46,9 +46,32 @@ const RowItem = ({ icon, title, subtitle, onPress, rightElement, theme }) => {
 
 const ProfileScreen = () => {
   const { mode, setMode, theme } = useTheme();
-  const { replayIntro } = useAuth();
+  const { replayIntro, logout } = useAuth();
   const globalStyles = createGlobalStyles(theme);
   const styles = createStyles(theme);
+
+  const handleLogout = () => {
+    Alert.alert("Cerrar sesión", "¿Quieres cerrar tu sesión ahora?", [
+      {
+        text: "Cancelar",
+        style: "cancel",
+      },
+      {
+        text: "Cerrar sesión",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await logout();
+          } catch (error) {
+            Alert.alert(
+              "Error",
+              "No se pudo cerrar sesión. Inténtalo nuevamente.",
+            );
+          }
+        },
+      },
+    ]);
+  };
 
   return (
     <LinearGradient
@@ -119,6 +142,13 @@ const ProfileScreen = () => {
                 "Aquí podrás configurar notificaciones.",
               )
             }
+          />
+          <RowItem
+            icon="log-out"
+            title="Cerrar sesión"
+            subtitle="Salir de tu cuenta en este dispositivo"
+            theme={theme}
+            onPress={handleLogout}
           />
         </View>
 
