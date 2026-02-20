@@ -197,6 +197,7 @@ const FinancialSetupScreen = () => {
           capturedFacts: step.capturedFacts,
           conversation: nextAnswers,
           completionReason: step.completionReason,
+          insightsStale: true,
           updatedAt: serverTimestamp(),
           createdBy: user?.uid,
         };

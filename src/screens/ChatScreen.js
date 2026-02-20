@@ -25,6 +25,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
 import Markdown from "react-native-markdown-display";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -47,16 +48,90 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../services/firebaseConfig";
 import { getMiloChatResponse } from "../services/openaiChatService";
 import { transcribeAudioWithOpenAI } from "../services/openaiOnboardingService";
+import {
+  createPlan,
+  deletePlan,
+  subscribeToPlans,
+  updatePlan,
+} from "../services/plansService";
 import FloatingBackground from "../components/FloatingBackground";
 
 const CHAT_COLLECTION = "chatConversations";
 const INTRO_MESSAGE =
   "Hey 🦥 Soy milo. Cuéntame qué tienes en mente sobre tu plata y lo pensamos juntos.";
 const INTRO_TYPING_SPEED = 22;
-const AUDIO_WAVE_BARS = 11;
+const WAVE_BAR_COUNT = 5;
 const TAP_TO_LOCK_MS = 650;
 const MOVE_TOLERANCE_PX = 22;
 const AI_TYPING_CHARS_PER_SEC = 46;
+const PAGE_SIZE = 30;
+const CACHE_KEY_PREFIX = "@foresy_chat_";
+
+// ─── Cache helpers ───
+const getCacheKey = (uid) => `${CACHE_KEY_PREFIX}${uid}`;
+
+const saveMessagesToCache = async (uid, messages) => {
+  try {
+    await AsyncStorage.setItem(getCacheKey(uid), JSON.stringify(messages));
+  } catch {}
+};
+
+const loadMessagesFromCache = async (uid) => {
+  try {
+    const raw = await AsyncStorage.getItem(getCacheKey(uid));
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+};
+
+// ─── Date separator helper ───
+// Use local date parts to avoid UTC→local timezone shift bugs
+const getDateKey = (timestamp) => {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const formatDateSeparator = (dateKey) => {
+  // dateKey = "YYYY-MM-DD" — parse as local (add T00:00 avoids UTC)
+  const parts = dateKey.split("-").map(Number);
+  const target = new Date(parts[0], parts[1] - 1, parts[2]);
+  if (isNaN(target.getTime())) return null;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((today - target) / 86400000);
+  if (diff === 0) return "Hoy";
+  if (diff === 1) return "Ayer";
+  const dayNames = [
+    "domingo",
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+  ];
+  const monthNames = [
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "oct",
+    "nov",
+    "dic",
+  ];
+  if (diff > 0 && diff < 7)
+    return (
+      dayNames[target.getDay()].charAt(0).toUpperCase() +
+      dayNames[target.getDay()].slice(1)
+    );
+  return `${target.getDate()} ${monthNames[target.getMonth()]} ${target.getFullYear()}`;
+};
 
 const ChatScreen = () => {
   const { theme } = useTheme();
@@ -75,12 +150,17 @@ const ChatScreen = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [recordingCancelled, setRecordingCancelled] = useState(false);
-  const [audioMeterLevel, setAudioMeterLevel] = useState(0.2);
   const [assistantTypingText, setAssistantTypingText] = useState("");
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
+  const [userPlans, setUserPlans] = useState([]);
+  const [deletingPlanId, setDeletingPlanId] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const messagesRef = useRef([]);
+  const plansRef = useRef([]);
+  const pendingPlanRef = useRef(null);
   const introTimerRef = useRef(null);
   const recordingRef = useRef(null);
   const transcribingMessageIdRef = useRef(null);
@@ -91,42 +171,86 @@ const ChatScreen = () => {
   const micPressSequenceRef = useRef(0);
   const releaseFallbackTimerRef = useRef(null);
   const assistantTypingFrameRef = useRef(null);
+  const isNearBottomRef = useRef(true);
 
   const micDragX = useSharedValue(0);
   const micDragY = useSharedValue(0);
   const lockHintProgress = useSharedValue(0);
   const micPressScale = useSharedValue(1);
-
   const mascotPulse = useSharedValue(1);
+
+  // ── Wave bars: 5 independent animated heights ──
+  const waveBar0 = useSharedValue(6);
+  const waveBar1 = useSharedValue(6);
+  const waveBar2 = useSharedValue(6);
+  const waveBar3 = useSharedValue(6);
+  const waveBar4 = useSharedValue(6);
+  const waveBarValues = [waveBar0, waveBar1, waveBar2, waveBar3, waveBar4];
+  const WAVE_HEIGHTS = [10, 18, 26, 18, 10]; // symmetric bell shape
+  const WAVE_DURATIONS = [380, 280, 220, 300, 420]; // different speeds
+
+  const waveBarStyles = waveBarValues.map((val) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedStyle(() => ({ height: val.value }))
+  );
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  const scrollToBottom = useCallback((animated = true) => {
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd?.({ animated });
-      setTimeout(() => {
-        listRef.current?.scrollToEnd?.({ animated });
-      }, 70);
-      setTimeout(() => {
-        listRef.current?.scrollToEnd?.({ animated });
-      }, 160);
+  useEffect(() => {
+    plansRef.current = userPlans;
+  }, [userPlans]);
+
+  // Subscribe to user plans from Firestore
+  useEffect(() => {
+    if (!user?.uid) {
+      setUserPlans([]);
+      return;
+    }
+    const unsub = subscribeToPlans(user.uid, (plans) => {
+      setUserPlans(plans);
     });
+    return () => unsub();
+  }, [user?.uid]);
+
+  // ── Inverted FlatList: index 0 = bottom = most recent message ──
+  // scrollToOffset(0) = go to bottom (most recent)
+  const scrollToBottom = useCallback((animated = true) => {
+    listRef.current?.scrollToOffset?.({ offset: 0, animated });
   }, []);
 
+  const scrollToBottomIfNear = useCallback(
+    (animated = true) => {
+      if (isNearBottomRef.current) {
+        scrollToBottom(animated);
+      }
+    },
+    [scrollToBottom],
+  );
+
+  const handleScroll = useCallback((e) => {
+    const { contentOffset } = e.nativeEvent;
+    // In inverted list, offset 0 = bottom. Near bottom = small offset.
+    isNearBottomRef.current = contentOffset.y < 120;
+  }, []);
+
+  // Keyboard: only scroll if already near bottom
   useEffect(() => {
     const showSub = Keyboard.addListener("keyboardDidShow", () =>
-      scrollToBottom(false),
+      scrollToBottomIfNear(false),
     );
     return () => {
       showSub.remove();
     };
-  }, [scrollToBottom]);
+  }, [scrollToBottomIfNear]);
 
   const persistMessages = useCallback(
     async (nextMessages) => {
       if (!user?.uid) return;
+
+      // Save to local cache first (fast)
+      saveMessagesToCache(user.uid, nextMessages);
 
       await setDoc(
         doc(db, CHAT_COLLECTION, user.uid),
@@ -146,12 +270,34 @@ const ChatScreen = () => {
       if (!Array.isArray(items) || items.length === 0) return;
       const next = [...messagesRef.current, ...items];
       setMessages(next);
+      setVisibleCount((prev) => prev + items.length);
       try {
         await persistMessages(next);
       } catch (error) {}
       scrollToBottom(true);
     },
     [persistMessages, scrollToBottom],
+  );
+
+  const handleDeletePlan = useCallback(
+    async (planId) => {
+      try {
+        setDeletingPlanId(planId);
+        await deletePlan(planId);
+        const next = messagesRef.current.filter(
+          (m) => !(m.role === "plan-notice" && m.planId === planId),
+        );
+        setMessages(next);
+        try {
+          await persistMessages(next);
+        } catch (e) {}
+      } catch (error) {
+        // silently fail
+      } finally {
+        setDeletingPlanId(null);
+      }
+    },
+    [persistMessages],
   );
 
   useEffect(() => {
@@ -166,6 +312,18 @@ const ChatScreen = () => {
     const loadChat = async () => {
       try {
         setHydrated(false);
+
+        // 1. Load from cache immediately (instant)
+        const cached = await loadMessagesFromCache(user.uid);
+        if (alive && Array.isArray(cached) && cached.length > 0) {
+          setMessages(cached);
+          setVisibleCount(Math.min(cached.length, PAGE_SIZE));
+          setHasStartedChat(true);
+          setHydrated(true);
+          // Inverted list auto-shows bottom — no manual scroll needed
+        }
+
+        // 2. Then sync from Firestore in background
         const chatRef = doc(db, CHAT_COLLECTION, user.uid);
         const chatSnap = await getDoc(chatRef);
 
@@ -173,14 +331,19 @@ const ChatScreen = () => {
 
         const stored = chatSnap.data()?.messages;
         if (Array.isArray(stored) && stored.length > 0) {
-          setMessages(stored);
+          const cachedLen = cached?.length || 0;
+          if (stored.length !== cachedLen || !cached) {
+            setMessages(stored);
+            setVisibleCount(Math.min(stored.length, PAGE_SIZE));
+            saveMessagesToCache(user.uid, stored);
+          }
           setHasStartedChat(true);
-        } else {
+        } else if (!cached || cached.length === 0) {
           setMessages([]);
           setHasStartedChat(false);
         }
       } catch (error) {
-        if (alive) {
+        if (alive && (!messages || messages.length === 0)) {
           setMessages([]);
           setHasStartedChat(false);
         }
@@ -244,15 +407,12 @@ const ChatScreen = () => {
     }, INTRO_TYPING_SPEED);
   }, [appendMessages, showIntroTyping]);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    scrollToBottom(false);
-  }, [hydrated, messages.length, scrollToBottom]);
+  // Inverted list starts at bottom automatically — no hydration scroll needed
 
   useEffect(() => {
     if (!sending) return;
-    scrollToBottom(false);
-  }, [scrollToBottom, sending]);
+    scrollToBottomIfNear(false);
+  }, [scrollToBottomIfNear, sending]);
 
   useEffect(() => {
     if (sending) {
@@ -272,6 +432,30 @@ const ChatScreen = () => {
 
     mascotPulse.value = withTiming(1, { duration: 180 });
   }, [mascotPulse, sending]);
+
+  // ── Wave bar animation: start looping when recording, stop when done ──
+  useEffect(() => {
+    if (isRecording) {
+      waveBarValues.forEach((bar, i) => {
+        const minH = 4;
+        const maxH = WAVE_HEIGHTS[i];
+        const dur = WAVE_DURATIONS[i];
+        bar.value = withRepeat(
+          withSequence(
+            withTiming(maxH, { duration: dur, easing: Easing.inOut(Easing.ease) }),
+            withTiming(minH, { duration: dur, easing: Easing.inOut(Easing.ease) }),
+          ),
+          -1,
+          false,
+        );
+      });
+    } else {
+      waveBarValues.forEach((bar) => {
+        bar.value = withTiming(6, { duration: 150 });
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording]);
 
   const typingMascotStyle = useAnimatedStyle(() => ({
     transform: [{ scale: mascotPulse.value }],
@@ -297,13 +481,61 @@ const ChatScreen = () => {
 
   const showMicButton = useMemo(() => !messageText.trim(), [messageText]);
 
-  const waveBars = useMemo(() => {
-    return Array.from({ length: AUDIO_WAVE_BARS }, (_, index) => {
-      const ratio = (index + 1) / AUDIO_WAVE_BARS;
-      const amplitude = 8 + ratio * 20 * audioMeterLevel;
-      return Math.max(6, Math.min(26, Math.round(amplitude)));
-    });
-  }, [audioMeterLevel]);
+  // ── Paginated data for INVERTED FlatList ──
+  // Inverted FlatList renders index 0 at bottom.
+  // We reverse the slice so newest messages come first (index 0 = bottom).
+  // Date separators go AFTER a group's last message (visually ABOVE it when inverted).
+  const paginatedData = useMemo(() => {
+    const total = messages.length;
+    const startIdx = Math.max(0, total - visibleCount);
+    const slice = messages.slice(startIdx); // chronological order
+
+    // Build reversed array with date separators
+    const result = [];
+    let lastDateKey = null;
+
+    // Walk from newest to oldest
+    for (let i = slice.length - 1; i >= 0; i--) {
+      const msg = slice[i];
+      const dateKey = msg.createdAt ? getDateKey(msg.createdAt) : null;
+
+      result.push(msg);
+
+      // Check if next message (older) has a different date → insert separator
+      const olderMsg = i > 0 ? slice[i - 1] : null;
+      const olderDateKey = olderMsg?.createdAt
+        ? getDateKey(olderMsg.createdAt)
+        : null;
+
+      if (dateKey && dateKey !== olderDateKey) {
+        // This is the first message of this day (chronologically), so place
+        // the separator above it. In inverted list, "above" = after in array.
+        const label = formatDateSeparator(dateKey);
+        if (label) {
+          result.push({
+            id: `sep-${dateKey}`,
+            role: "date-separator",
+            text: label,
+          });
+        }
+      }
+    }
+    return result;
+  }, [messages, visibleCount]);
+
+  const canLoadOlder = messages.length > visibleCount;
+
+  const loadOlderMessages = useCallback(() => {
+    if (loadingOlder || !canLoadOlder) return;
+    setLoadingOlder(true);
+    // In inverted FlatList, adding items to the end of the data array
+    // (older messages) does NOT shift the scroll position.
+    // The user stays where they are — exactly like WhatsApp.
+    setTimeout(() => {
+      setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, messages.length));
+      setLoadingOlder(false);
+    }, 250);
+  }, [loadingOlder, canLoadOlder, messages.length]);
 
   const formatDuration = (durationMs) => {
     const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
@@ -334,8 +566,9 @@ const ChatScreen = () => {
       ...profileDataPatch,
     };
 
-    const nextSummary =
-      updateSummary ||
+    // updateSummary describes WHAT changed, not the full profile summary.
+    // Keep the existing profileSummary intact; store updateSummary only in the trace.
+    const existingSummary =
       financialProfile?.profileSummary ||
       "Contexto financiero actualizado en conversación.";
 
@@ -346,7 +579,7 @@ const ChatScreen = () => {
     const traceEntry = {
       at: new Date().toISOString(),
       source: "chat-milo",
-      summary: nextSummary,
+      summary: updateSummary || "Actualización desde chat.",
       fields: Object.keys(profileDataPatch || {}).filter((key) =>
         Boolean(`${profileDataPatch?.[key] || ""}`.trim()),
       ),
@@ -357,8 +590,9 @@ const ChatScreen = () => {
       {
         completed: true,
         profileData: mergedData,
-        profileSummary: nextSummary,
+        profileSummary: existingSummary,
         capturedFacts: nextFacts,
+        insightsStale: true,
         contextUpdateHistory: arrayUnion(traceEntry),
         updatedAt: serverTimestamp(),
       },
@@ -447,8 +681,9 @@ const ChatScreen = () => {
 
           if (changed) {
             setAssistantTypingText(text.slice(0, index));
-            if (index % 2 === 0) {
-              listRef.current?.scrollToEnd?.({ animated: true });
+            // Only scroll every ~8 chars and only if user is near bottom
+            if (index % 8 === 0 && isNearBottomRef.current) {
+              listRef.current?.scrollToOffset?.({ offset: 0, animated: false });
             }
           }
 
@@ -456,7 +691,7 @@ const ChatScreen = () => {
             assistantTypingFrameRef.current = null;
             setIsAssistantTyping(false);
             setAssistantTypingText("");
-            scrollToBottom(false);
+            scrollToBottomIfNear(false);
             resolve();
             return;
           }
@@ -496,6 +731,7 @@ const ChatScreen = () => {
     try {
       await persistMessages(optimisticMessages);
     } catch (error) {}
+    isNearBottomRef.current = true; // user just sent a message, force scroll
     scrollToBottom(true);
 
     try {
@@ -503,6 +739,8 @@ const ChatScreen = () => {
         userMessage: userText,
         financialProfile,
         recentMessages: optimisticMessages,
+        existingPlans: plansRef.current,
+        pendingPlan: pendingPlanRef.current,
       });
 
       const assistantMessageText =
@@ -523,6 +761,53 @@ const ChatScreen = () => {
         });
       }
 
+      // ── Handle plan creation OR modification (AI-driven confirmation) ──
+      let createdPlanId = null;
+      let finalPlanData = null;
+      let updatedPlanId = null;
+
+      if (ai.userConfirmedPlan && pendingPlanRef.current) {
+        const pending = pendingPlanRef.current;
+
+        if (pending._isUpdate && pending._planId) {
+          // ── MODIFY existing plan ──
+          const { _isUpdate, _planId, ...fieldsToUpdate } = pending;
+          try {
+            await updatePlan(_planId, fieldsToUpdate);
+            updatedPlanId = _planId;
+          } catch (planError) {
+            // Plan update failed silently
+          }
+        } else {
+          // ── CREATE new plan ──
+          finalPlanData = pending;
+          if (user?.uid && finalPlanData) {
+            try {
+              createdPlanId = await createPlan(user.uid, finalPlanData);
+            } catch (planError) {
+              // Plan creation failed silently
+            }
+          }
+        }
+        pendingPlanRef.current = null;
+      } else if (ai.planUpdateData && ai.planUpdateData.planId) {
+        // AI proposes modifying an existing plan → store for confirmation
+        const { planId, ...updateFields } = ai.planUpdateData;
+        pendingPlanRef.current = {
+          _isUpdate: true,
+          _planId: planId,
+          ...updateFields,
+        };
+      } else if (ai.pendingPlanData) {
+        // AI proposes a new plan → store for later confirmation
+        pendingPlanRef.current = ai.pendingPlanData;
+      } else if (!ai.pendingPlanData && !ai.userConfirmedPlan && !ai.planUpdateData) {
+        // No plan activity — user rejected, topic changed, or no plan context
+        if (pendingPlanRef.current) {
+          pendingPlanRef.current = null;
+        }
+      }
+
       setSending(false);
       await animateAssistantMessage(assistantMessageText);
 
@@ -540,6 +825,36 @@ const ChatScreen = () => {
           id: `n-${Date.now()}`,
           role: "notice",
           text: ai.updateNotice || "He actualizado tu situación financiera 🦥",
+          createdAt: Date.now(),
+        });
+      }
+
+      if (updatedPlanId) {
+        next.push({
+          id: `n-upd-${Date.now()}`,
+          role: "notice",
+          text: "Plan actualizado ✅",
+          createdAt: Date.now(),
+        });
+      }
+
+      if (createdPlanId && finalPlanData) {
+        const planType = finalPlanData?.type || "reminder";
+        const mascotIndex =
+          planType === "reminder" ? 1 : planType === "checklist" ? 2 : 3;
+        const planNoticeText =
+          planType === "reminder"
+            ? `📅 Recordatorio creado: ${finalPlanData.title}`
+            : planType === "checklist"
+              ? `📋 Plan creado: ${finalPlanData.title}`
+              : `🗓️ Sesión programada: ${finalPlanData.title}`;
+        next.push({
+          id: `p-${Date.now()}`,
+          role: "plan-notice",
+          text: planNoticeText,
+          planId: createdPlanId,
+          planType,
+          mascotIndex,
           createdAt: Date.now(),
         });
       }
@@ -569,7 +884,6 @@ const ChatScreen = () => {
     micDragY.value = withTiming(0, { duration: 120 });
     lockHintProgress.value = withTiming(0, { duration: 120 });
     micPressScale.value = withTiming(1, { duration: 120 });
-    setAudioMeterLevel(0.2);
   };
 
   const triggerHaptic = async (kind = "soft") => {
@@ -667,7 +981,6 @@ const ChatScreen = () => {
     } catch (error) {
     } finally {
       recordingRef.current = null;
-      setAudioMeterLevel(0.2);
       setTimeout(() => setRecordingCancelled(false), 350);
     }
   };
@@ -687,27 +1000,13 @@ const ChatScreen = () => {
       });
 
       const recording = new Audio.Recording();
-      const baseOptions = Audio.RecordingOptionsPresets.HIGH_QUALITY;
-      const recordingOptions = {
-        ...baseOptions,
-        ios: {
-          ...(baseOptions.ios || {}),
-          isMeteringEnabled: true,
-        },
-      };
-
+      const recordingOptions = Audio.RecordingOptionsPresets.HIGH_QUALITY;
       await recording.prepareToRecordAsync(recordingOptions);
       recording.setOnRecordingStatusUpdate((status) => {
         if (!status?.isRecording) return;
-
         if (typeof status.durationMillis === "number") {
           setRecordingDurationMs(status.durationMillis);
         }
-
-        const metering =
-          typeof status.metering === "number" ? status.metering : -60;
-        const normalized = Math.max(0.08, Math.min(1, (metering + 60) / 60));
-        setAudioMeterLevel(normalized);
       });
       recording.setProgressUpdateInterval(120);
       await recording.startAsync();
@@ -990,26 +1289,154 @@ const ChatScreen = () => {
 
         <FlatList
           ref={listRef}
-          data={messages}
+          inverted
+          data={paginatedData}
           keyExtractor={(item, index) => `${item?.id ?? index}`}
           style={styles.messagesArea}
-          contentContainerStyle={[
-            styles.messagesContent,
-            messages.length === 0 && styles.emptyMessagesContent,
-          ]}
+          contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          onContentSizeChange={() => {
-            if (isAssistantTyping) {
-              listRef.current?.scrollToEnd?.({ animated: true });
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          onEndReached={() => {
+            // In inverted list, "end" = scrolling up = older messages
+            if (canLoadOlder && !loadingOlder) {
+              loadOlderMessages();
             }
           }}
-          renderItem={({ item }) =>
-            item.role === "notice" ? (
-              <View style={styles.noticeWrap}>
-                <Text style={styles.noticeText}>{item.text}</Text>
-              </View>
-            ) : (
+          onEndReachedThreshold={0.3}
+          renderItem={({ item }) => {
+            if (item.role === "date-separator") {
+              return (
+                <View style={styles.dateSeparatorWrap}>
+                  <View style={styles.dateSeparatorLine} />
+                  <Text style={styles.dateSeparatorText}>{item.text}</Text>
+                  <View style={styles.dateSeparatorLine} />
+                </View>
+              );
+            }
+            if (item.role === "notice") {
+              return (
+                <View style={styles.noticeWrap}>
+                  <Text style={styles.noticeText}>{item.text}</Text>
+                </View>
+              );
+            }
+
+            if (item.role === "plan-notice") {
+              const mascotSources = {
+                1: require("../../assets/milo/1.webp"),
+                2: require("../../assets/milo/2.webp"),
+                3: require("../../assets/milo/3.webp"),
+              };
+              const planColors = {
+                reminder: ["#EF4444", "#F87171"],
+                checklist: ["#F59E0B", "#FBBF24"],
+                session: ["#8B5CF6", "#A78BFA"],
+              };
+              const planIcons = {
+                reminder: "notifications",
+                checklist: "checkbox",
+                session: "chatbubble-ellipses",
+              };
+              const colors = planColors[item.planType] || planColors.reminder;
+              const icon = planIcons[item.planType] || "notifications";
+              const mascot =
+                mascotSources[item.mascotIndex] || mascotSources[1];
+              const isDeleting = deletingPlanId === item.planId;
+
+              return (
+                <View style={styles.planNoticeContainer}>
+                  <LinearGradient
+                    colors={colors}
+                    style={styles.planNoticeCard}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.planNoticeHeader}>
+                      <View style={styles.planNoticeIconCircle}>
+                        <Ionicons name={icon} size={22} color="#FFF" />
+                      </View>
+                      <View style={styles.planNoticeTextWrap}>
+                        <Text style={styles.planNoticeTitle}>
+                          {item.planType === "reminder"
+                            ? "📌 Recordatorio creado"
+                            : item.planType === "checklist"
+                              ? "🎯 Plan de ahorro creado"
+                              : "💬 Sesión programada"}
+                        </Text>
+                        <Text style={styles.planNoticeDescription}>
+                          {item.text}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.planDeleteButton}
+                      onPress={() => {
+                        if (isDeleting) return;
+                        // Show inline confirmation
+                        setMessages((prev) =>
+                          prev.map((m) =>
+                            m.id === item.id
+                              ? { ...m, confirmDelete: !m.confirmDelete }
+                              : m,
+                          ),
+                        );
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={14}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </TouchableOpacity>
+                    {item.confirmDelete && (
+                      <View style={styles.planConfirmRow}>
+                        <Text style={styles.planConfirmText}>
+                          ¿Eliminar este plan?
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.planConfirmYes}
+                          onPress={() => handleDeletePlan(item.planId)}
+                        >
+                          <Text style={styles.planConfirmYesText}>
+                            {isDeleting ? "..." : "Sí, eliminar"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.planConfirmNo}
+                          onPress={() => {
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === item.id
+                                  ? { ...m, confirmDelete: false }
+                                  : m,
+                              ),
+                            );
+                          }}
+                        >
+                          <Text style={styles.planConfirmNoText}>Cancelar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {/* Corner decoration */}
+                    <View style={styles.planCornerDeco}>
+                      <View style={styles.planCornerCircle1} />
+                      <View style={styles.planCornerCircle2} />
+                    </View>
+                  </LinearGradient>
+                  <Image
+                    source={mascot}
+                    style={styles.planMascotPeek}
+                    resizeMode="contain"
+                  />
+                </View>
+              );
+            }
+
+            return (
               <View style={item.isIntro ? styles.introMessageWrap : undefined}>
                 {item.isIntro ? (
                   <Image
@@ -1055,65 +1482,83 @@ const ChatScreen = () => {
                   ) : null}
                 </View>
               </View>
-            )
+            );
+          }}
+          ListHeaderComponent={
+            sending || isAssistantTyping ? (
+              <View>
+                {sending ? (
+                  <View style={styles.typingWrap}>
+                    <Animated.Image
+                      source={require("../../assets/milo/face.png")}
+                      style={[styles.typingMascot, typingMascotStyle]}
+                      resizeMode="contain"
+                    />
+                    <Text style={styles.typingText}>milo está pensando...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.typingWrapLong}>
+                    <View style={styles.typingMascotFixed}>
+                      <Animated.Image
+                        source={require("../../assets/milo/face.png")}
+                        style={[styles.typingMascot, typingMascotStyle]}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={styles.typingBubbleContainer}>
+                      <View
+                        style={[
+                          styles.messageBubble,
+                          styles.assistantMessageBubble,
+                          styles.typingBubble,
+                        ]}
+                      >
+                        <Markdown style={styles.markdownAssistant}>
+                          {assistantTypingText}
+                        </Markdown>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ) : null
           }
           ListFooterComponent={
             <View>
-              {sending ? (
-                <View style={styles.typingWrap}>
-                  <Animated.Image
-                    source={require("../../assets/milo/face.png")}
-                    style={[styles.typingMascot, typingMascotStyle]}
-                    resizeMode="contain"
+              {loadingOlder ? (
+                <View style={styles.loadOlderWrap}>
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.primary}
                   />
-                  <Text style={styles.typingText}>milo está pensando...</Text>
                 </View>
-              ) : isAssistantTyping ? (
-                <View style={styles.typingWrapLong}>
-                  <Animated.Image
+              ) : null}
+              {showIntroTyping ? (
+                <View style={styles.introTypingWrap}>
+                  <Image
                     source={require("../../assets/milo/face.png")}
-                    style={[styles.typingMascot, typingMascotStyle]}
+                    style={styles.introMascot}
                     resizeMode="contain"
                   />
                   <View
                     style={[
                       styles.messageBubble,
                       styles.assistantMessageBubble,
-                      styles.typingBubble,
                     ]}
                   >
-                    <Markdown style={styles.markdownAssistant}>
-                      {assistantTypingText}
-                    </Markdown>
+                    <Text
+                      style={[styles.messageText, styles.assistantMessageText]}
+                    >
+                      {introTypingText}
+                    </Text>
                   </View>
                 </View>
               ) : null}
-              <View style={styles.listBottomSpacer} />
             </View>
-          }
-          ListHeaderComponent={
-            showIntroTyping ? (
-              <View style={styles.introTypingWrap}>
-                <Image
-                  source={require("../../assets/milo/face.png")}
-                  style={styles.introMascot}
-                  resizeMode="contain"
-                />
-                <View
-                  style={[styles.messageBubble, styles.assistantMessageBubble]}
-                >
-                  <Text
-                    style={[styles.messageText, styles.assistantMessageText]}
-                  >
-                    {introTypingText}
-                  </Text>
-                </View>
-              </View>
-            ) : null
           }
           ListEmptyComponent={
             !showIntroTyping ? (
-              <View style={styles.emptyState}>
+              <View style={styles.emptyStateInverted}>
                 <Image
                   source={require("../../assets/milo/2.webp")}
                   style={styles.emptyMascot}
@@ -1146,16 +1591,10 @@ const ChatScreen = () => {
                 {formatDuration(recordingDurationMs)}
               </Text>
               <View style={styles.waveTrack}>
-                {waveBars.map((barHeight, index) => (
-                  <View
-                    key={`wave-${index}`}
-                    style={[
-                      styles.waveBar,
-                      {
-                        height: barHeight,
-                        opacity: 0.35 + (index + 1) / (AUDIO_WAVE_BARS + 2),
-                      },
-                    ]}
+                {waveBarStyles.map((animStyle, i) => (
+                  <Animated.View
+                    key={`wb-${i}`}
+                    style={[styles.waveBar, animStyle]}
                   />
                 ))}
               </View>
@@ -1301,20 +1740,18 @@ const createStyles = (theme) =>
     messagesContent: {
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
-      paddingBottom: theme.spacing.lg + 34,
       gap: theme.spacing.sm,
-    },
-    listBottomSpacer: {
-      height: 34,
-    },
-    emptyMessagesContent: {
-      justifyContent: "center",
-      flexGrow: 1,
     },
     emptyState: {
       alignItems: "center",
       maxWidth: 320,
       alignSelf: "center",
+    },
+    emptyStateInverted: {
+      alignItems: "center",
+      maxWidth: 320,
+      alignSelf: "center",
+      transform: [{ scaleY: -1 }],
     },
     emptyMascot: {
       width: 150,
@@ -1393,22 +1830,99 @@ const createStyles = (theme) =>
       body: {
         color: theme.colors.textPrimary,
         fontSize: 15,
-        lineHeight: 22,
+        lineHeight: 23,
       },
       paragraph: {
-        marginTop: 0,
-        marginBottom: 6,
+        marginTop: 2,
+        marginBottom: 10,
       },
       strong: {
         color: theme.colors.textPrimary,
         fontWeight: "800",
       },
-      bullet_list: {
-        marginTop: 0,
+      em: {
+        color: theme.colors.textSecondary,
+        fontStyle: "italic",
+      },
+      heading1: {
+        fontSize: 20,
+        fontWeight: "800",
+        color: theme.colors.textPrimary,
+        marginTop: 12,
+        marginBottom: 8,
+      },
+      heading2: {
+        fontSize: 18,
+        fontWeight: "800",
+        color: theme.colors.textPrimary,
+        marginTop: 10,
+        marginBottom: 6,
+      },
+      heading3: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: theme.colors.textPrimary,
+        marginTop: 8,
         marginBottom: 4,
       },
+      bullet_list: {
+        marginTop: 4,
+        marginBottom: 10,
+      },
+      ordered_list: {
+        marginTop: 4,
+        marginBottom: 10,
+      },
       list_item: {
-        marginBottom: 2,
+        marginBottom: 6,
+      },
+      bullet_list_icon: {
+        marginLeft: 4,
+        marginRight: 8,
+        color: theme.colors.primary,
+        fontSize: 15,
+        lineHeight: 23,
+      },
+      ordered_list_icon: {
+        marginLeft: 4,
+        marginRight: 8,
+        color: theme.colors.primary,
+        fontWeight: "700",
+        fontSize: 15,
+        lineHeight: 23,
+      },
+      code_inline: {
+        backgroundColor: theme.colors.border,
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+        fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+        fontSize: 13,
+        color: theme.colors.primary,
+      },
+      fence: {
+        backgroundColor: theme.colors.border,
+        borderRadius: 8,
+        padding: 12,
+        marginVertical: 8,
+      },
+      blockquote: {
+        backgroundColor: theme.colors.badgeBackground || "rgba(0,0,0,0.04)",
+        borderLeftWidth: 3,
+        borderLeftColor: theme.colors.primary,
+        paddingLeft: 12,
+        paddingVertical: 6,
+        marginVertical: 8,
+        borderRadius: 4,
+      },
+      hr: {
+        marginVertical: 12,
+        backgroundColor: theme.colors.border,
+        height: 1,
+      },
+      link: {
+        color: theme.colors.primary,
+        textDecorationLine: "underline",
       },
     },
     pendingLoader: {
@@ -1444,13 +1958,22 @@ const createStyles = (theme) =>
       marginTop: theme.spacing.sm,
       flexDirection: "row",
       alignItems: "flex-end",
-      gap: 8,
+      gap: 6,
       alignSelf: "flex-start",
       maxWidth: "95%",
     },
     typingBubble: {
-      maxWidth: "86%",
       paddingVertical: 10,
+    },
+    typingMascotFixed: {
+      width: 22,
+      height: 22,
+      flexShrink: 0,
+      marginBottom: 4,
+    },
+    typingBubbleContainer: {
+      flex: 1,
+      maxWidth: "90%",
     },
     typingMascot: {
       width: 20,
@@ -1496,15 +2019,15 @@ const createStyles = (theme) =>
     waveTrack: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 2,
+      gap: 3,
       flex: 1,
-      maxWidth: 90,
-      marginRight: 4,
+      maxWidth: 60,
     },
     waveBar: {
       width: 3,
       borderRadius: 2,
       backgroundColor: theme.colors.primary,
+      height: 6,
     },
     recordingSlideHint: {
       color: theme.colors.textSecondary,
@@ -1573,6 +2096,162 @@ const createStyles = (theme) =>
       alignItems: "center",
       justifyContent: "center",
       marginRight: 6,
+    },
+    // ── Plan notice card (Duolingo-style) ──
+    planNoticeContainer: {
+      alignSelf: "stretch",
+      marginVertical: 8,
+      position: "relative",
+    },
+    planNoticeCard: {
+      borderRadius: 20,
+      padding: 16,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    planNoticeHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    planNoticeIconCircle: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: "rgba(255,255,255,0.25)",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: "rgba(255,255,255,0.4)",
+    },
+    planNoticeTextWrap: {
+      flex: 1,
+    },
+    planNoticeTitle: {
+      color: "#FFF",
+      fontSize: 14,
+      fontWeight: "900",
+      marginBottom: 3,
+      textShadowColor: "rgba(0,0,0,0.2)",
+      textShadowOffset: { width: 1, height: 1 },
+      textShadowRadius: 2,
+    },
+    planNoticeDescription: {
+      color: "#FFF",
+      fontSize: 13,
+      fontWeight: "600",
+      opacity: 0.95,
+      lineHeight: 18,
+    },
+    planDeleteButton: {
+      position: "absolute",
+      top: 10,
+      right: 10,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: "rgba(0,0,0,0.2)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    planConfirmRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 12,
+      gap: 8,
+    },
+    planConfirmText: {
+      color: "#FFF",
+      fontSize: 13,
+      fontWeight: "700",
+      flex: 1,
+    },
+    planConfirmYes: {
+      backgroundColor: "rgba(0,0,0,0.3)",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 12,
+    },
+    planConfirmYesText: {
+      color: "#FFF",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    planConfirmNo: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    planConfirmNoText: {
+      color: "rgba(255,255,255,0.8)",
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    planCornerDeco: {
+      position: "absolute",
+      right: -8,
+      bottom: -8,
+    },
+    planCornerCircle1: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: "rgba(255,255,255,0.1)",
+    },
+    planCornerCircle2: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      position: "absolute",
+      top: 8,
+      left: 8,
+    },
+    planMascotPeek: {
+      position: "absolute",
+      width: 44,
+      height: 44,
+      bottom: -6,
+      right: 8,
+      transform: [{ rotate: "12deg" }],
+    },
+    // ── Date separators (WhatsApp-style) ──
+    dateSeparatorWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginVertical: 12,
+      paddingHorizontal: 8,
+      gap: 10,
+    },
+    dateSeparatorLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+    },
+    dateSeparatorText: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      fontWeight: "700",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      backgroundColor: theme.colors.surfaceSoft || theme.colors.background,
+      borderRadius: theme.radius.pill,
+      overflow: "hidden",
+    },
+    // ── Load older messages ──
+    loadOlderWrap: {
+      alignSelf: "center",
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      marginBottom: 6,
+    },
+    loadOlderText: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: "700",
     },
   });
 

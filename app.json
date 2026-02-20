@@ -40,7 +40,6 @@
         "webClientId": "994901631529-fkbgl8dq5lg3ca0imom8hfhk9cmf5k6o.apps.googleusercontent.com"
       },
       "openai": {
-        "apiKey": "",
         "model": "gpt-4o-mini",
         "transcriptionModel": "gpt-4o-mini-transcribe"
       },

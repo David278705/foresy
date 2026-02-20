@@ -5,7 +5,7 @@ const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 
-const SYSTEM_PROMPT = `Eres un asesor de onboarding financiero para una app llamada Foresy.
+const SYSTEM_PROMPT = `Eres un asesor de onboarding financiero para una app llamada Milo.
 Tu objetivo es recolectar contexto financiero de forma profunda pero amable para personalizar toda la experiencia del usuario.
 
 REGLAS:
@@ -152,10 +152,9 @@ export const getFinancialOnboardingStep = async ({
             latestAnswer,
             maxQuestions,
             currentQuestionCount: Array.isArray(history) ? history.length : 0,
-            instruction:
-              forceComplete
-                ? "Debes cerrar el perfil ahora mismo. Responde con isProfileComplete=true, entrega profileSummary y profileData completos y no dejes preguntas pendientes."
-                : "Evalúa el contexto acumulado y devuelve la siguiente pregunta o finalización.",
+            instruction: forceComplete
+              ? "Debes cerrar el perfil ahora mismo. Responde con isProfileComplete=true, entrega profileSummary y profileData completos y no dejes preguntas pendientes."
+              : "Evalúa el contexto acumulado y devuelve la siguiente pregunta o finalización.",
           }),
         },
       ],

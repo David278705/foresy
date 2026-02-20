@@ -157,7 +157,7 @@ const ProfileScreen = () => {
           <RowItem
             icon="document-text"
             title="Términos y condiciones"
-            subtitle="Condiciones de uso de Foresy"
+            subtitle="Condiciones de uso de Milo"
             theme={theme}
             onPress={() =>
               Alert.alert("Términos", "Documento disponible próximamente.")
