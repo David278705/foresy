@@ -93,14 +93,11 @@ const EmailLoginScreen = ({ navigation }) => {
                 onPress={handleLogin}
                 disabled={loading}
               >
-                <LinearGradient
-                  colors={theme.gradients.primary}
-                  style={globalStyles.primaryButton}
-                >
+                <View style={[globalStyles.primaryButton, { backgroundColor: theme.colors.primary }]}>
                   <Text style={globalStyles.primaryButtonText}>
                     {loading ? "Entrando..." : "Entrar"}
                   </Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity

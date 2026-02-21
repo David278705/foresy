@@ -54,6 +54,7 @@ import {
   subscribeToPlans,
   updatePlan,
 } from "../services/plansService";
+import { addAchievement } from "../services/achievementsService";
 import FloatingBackground from "../components/FloatingBackground";
 
 const CHAT_COLLECTION = "chatConversations";
@@ -784,6 +785,25 @@ const ChatScreen = () => {
           if (user?.uid && finalPlanData) {
             try {
               createdPlanId = await createPlan(user.uid, finalPlanData);
+
+              // Register achievement based on plan type
+              const achievementType =
+                finalPlanData.type === "reminder"
+                  ? "reminder_created"
+                  : finalPlanData.type === "session"
+                    ? "session_created"
+                    : "checklist_created";
+              const achievementDetail =
+                finalPlanData.type === "reminder"
+                  ? `Activaste el recordatorio "${finalPlanData.title}"`
+                  : finalPlanData.type === "session"
+                    ? `Programaste sesiones de "${finalPlanData.title}"`
+                    : `Creaste el plan "${finalPlanData.title}" con ${finalPlanData.steps?.length || 0} pasos`;
+              await addAchievement(user.uid, {
+                type: achievementType,
+                title: finalPlanData.title,
+                detail: achievementDetail,
+              });
             } catch (planError) {
               // Plan creation failed silently
             }
@@ -805,6 +825,19 @@ const ChatScreen = () => {
         // No plan activity — user rejected, topic changed, or no plan context
         if (pendingPlanRef.current) {
           pendingPlanRef.current = null;
+        }
+      }
+
+      // ── Register personal milestone if AI detected one ──
+      if (ai.personalMilestone && user?.uid) {
+        try {
+          await addAchievement(user.uid, {
+            type: "personal_milestone",
+            title: ai.personalMilestone.title,
+            detail: ai.personalMilestone.detail || ai.personalMilestone.title,
+          });
+        } catch {
+          // Silently fail
         }
       }
 
@@ -1276,14 +1309,20 @@ const ChatScreen = () => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <View style={styles.chatHeader}>
-          <Image
-            source={require("../../assets/milo/face.png")}
-            style={styles.avatar}
-            resizeMode="contain"
-          />
-          <View>
+          {/* Avatar con indicador online */}
+          <View style={styles.avatarWrapper}>
+            <Image
+              source={require("../../assets/milo/face.png")}
+              style={styles.avatar}
+              resizeMode="contain"
+            />
+            <View style={styles.onlineDot} />
+          </View>
+
+          {/* Info central */}
+          <View style={styles.headerInfo}>
             <Text style={styles.headerTitle}>milo</Text>
-            <Text style={styles.headerSubtitle}>Asistente financiero IA</Text>
+            <Text style={styles.headerSubtitle}>en línea · asistente financiero</Text>
           </View>
         </View>
 
@@ -1714,25 +1753,46 @@ const createStyles = (theme) =>
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
-      paddingBottom: theme.spacing.md,
-      marginBottom: theme.spacing.sm,
+      paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       gap: 12,
+      backgroundColor: theme.colors.surface,
+    },
+    avatarWrapper: {
+      position: "relative",
     },
     avatar: {
-      width: 46,
-      height: 46,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.colors.surfaceSoft,
+    },
+    onlineDot: {
+      position: "absolute",
+      bottom: 1,
+      right: 1,
+      width: 11,
+      height: 11,
+      borderRadius: 6,
+      backgroundColor: "#22C55E",
+      borderWidth: 2,
+      borderColor: theme.colors.surface,
+    },
+    headerInfo: {
+      flex: 1,
     },
     headerTitle: {
       color: theme.colors.textPrimary,
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: "800",
+      letterSpacing: 0.1,
     },
     headerSubtitle: {
-      color: theme.colors.textSecondary,
-      fontSize: 13,
-      marginTop: 2,
+      color: theme.colors.success,
+      fontSize: 12,
+      marginTop: 1,
+      fontWeight: "500",
     },
     messagesArea: {
       flex: 1,

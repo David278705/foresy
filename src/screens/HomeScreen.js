@@ -85,15 +85,37 @@ const ChatEntryCard = ({ onPress, delay, theme, globalStyles, styles }) => {
           buttonScale.value = withSpring(1, { damping: 16, stiffness: 240 });
         }}
       >
-        <LinearGradient
-          colors={theme.gradients.primary}
-          style={globalStyles.primaryButton}
+        <View
+          style={[
+            globalStyles.primaryButton,
+            { backgroundColor: theme.colors.primary },
+          ]}
         >
           <Text style={globalStyles.primaryButtonText}>Ir al chat</Text>
-        </LinearGradient>
+        </View>
       </AnimatedTouchableOpacity>
     </FadeInCard>
   );
+};
+
+// ─── Markdown-lite renderer for the summary ───
+// ─── Shared bold renderer ───
+const renderBold = (str, theme) => {
+  if (!str) return null;
+  const parts = str.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, j) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <Text
+          key={j}
+          style={{ fontWeight: "800", color: theme.colors.textPrimary }}
+        >
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return <Text key={j}>{part}</Text>;
+  });
 };
 
 // ─── Markdown-lite renderer for the summary ───
@@ -108,23 +130,6 @@ const MarkdownSummary = ({ text, theme }) => {
         const isHeader =
           /^[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(trimmed);
 
-        const renderBold = (str) => {
-          const parts = str.split(/(\*\*[^*]+\*\*)/g);
-          return parts.map((part, j) => {
-            if (part.startsWith("**") && part.endsWith("**")) {
-              return (
-                <Text
-                  key={j}
-                  style={{ fontWeight: "800", color: theme.colors.textPrimary }}
-                >
-                  {part.slice(2, -2)}
-                </Text>
-              );
-            }
-            return <Text key={j}>{part}</Text>;
-          });
-        };
-
         if (isHeader) {
           return (
             <Text
@@ -137,7 +142,7 @@ const MarkdownSummary = ({ text, theme }) => {
                 marginBottom: 2,
               }}
             >
-              {renderBold(trimmed)}
+              {renderBold(trimmed, theme)}
             </Text>
           );
         }
@@ -152,7 +157,7 @@ const MarkdownSummary = ({ text, theme }) => {
               paddingLeft: 4,
             }}
           >
-            {renderBold(trimmed)}
+            {renderBold(trimmed, theme)}
           </Text>
         );
       })}
@@ -163,7 +168,6 @@ const MarkdownSummary = ({ text, theme }) => {
 // ─── Insight card (strengths / improvements) ───
 const InsightCard = ({
   title,
-  emoji,
   items,
   miloImage,
   accentColor,
@@ -184,7 +188,7 @@ const InsightCard = ({
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={[styles.insightTitle, { color: accentColor }]}>
-            {emoji} {title}
+            {title}
           </Text>
         </View>
       </View>
@@ -192,8 +196,12 @@ const InsightCard = ({
         <View key={i} style={styles.insightItem}>
           <View style={[styles.insightDot, { backgroundColor: accentColor }]} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.insightItemTitle}>{item.title}</Text>
-            <Text style={styles.insightItemDetail}>{item.detail}</Text>
+            <Text style={styles.insightItemTitle}>
+              {renderBold(item.title, theme)}
+            </Text>
+            <Text style={styles.insightItemDetail}>
+              {renderBold(item.detail, theme)}
+            </Text>
           </View>
         </View>
       ))}
@@ -366,7 +374,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={globalStyles.pageHeader}>
           <Text style={globalStyles.pageTitle}>Milo</Text>
           <Animated.Text style={[styles.welcome, welcomeAnimatedStyle]}>
-            Bienvenido, {user?.email || "Usuario"}
+            te da la bienvenida, Usuario
           </Animated.Text>
           <Image
             source={MILO_IMAGES[2]}
@@ -417,7 +425,6 @@ const HomeScreen = ({ navigation }) => {
         {hasInsights ? (
           <InsightCard
             title="Lo que haces bien"
-            emoji="💪"
             items={insights.strengths}
             miloImage={MILO_IMAGES[1]}
             accentColor={theme.colors.success}
@@ -432,7 +439,6 @@ const HomeScreen = ({ navigation }) => {
         {hasInsights ? (
           <InsightCard
             title="Oportunidades de mejora"
-            emoji="🔍"
             items={insights.improvements}
             miloImage={MILO_IMAGES[2]}
             accentColor={theme.isDark ? theme.colors.accent : "#D97706"}

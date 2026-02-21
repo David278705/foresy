@@ -23,10 +23,24 @@ import {
   today as getToday,
   addDaysToDate,
 } from "../services/plansService";
+import { addAchievement } from "../services/achievementsService";
 
 const DAY_NAMES_SHORT = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 
-const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const MONTH_NAMES = [
+  "Ene",
+  "Feb",
+  "Mar",
+  "Abr",
+  "May",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dic",
+];
 
 const friendlyDate = (dateStr) => {
   const todayStr = getToday();
@@ -84,13 +98,23 @@ const CalendarioScreen = ({ navigation }) => {
       if (!map[ev.date]) map[ev.date] = [];
       map[ev.date].push(ev);
     });
-    const sorted = Object.keys(map).sort();
+
+    // Siempre incluir hoy aunque no tenga eventos
+    if (!map[todayStr]) map[todayStr] = [];
+
+    const sorted = Object.keys(map).sort((a, b) => {
+      // Hoy siempre primero
+      if (a === todayStr) return -1;
+      if (b === todayStr) return 1;
+      return a < b ? -1 : 1;
+    });
+
     return sorted.map((date) => ({
       date,
       label: friendlyDate(date),
       data: map[date],
     }));
-  }, [events]);
+  }, [events, todayStr]);
 
   const datesWithEvents = useMemo(() => {
     const s = new Set();
@@ -132,6 +156,13 @@ const CalendarioScreen = ({ navigation }) => {
           { insightsStale: true },
           { merge: true },
         );
+
+        // Register achievement for completing the plan
+        await addAchievement(user.uid, {
+          type: "plan_completed",
+          title: plan.title,
+          detail: `Completaste los ${steps.length} pasos de "${plan.title}" 🎉`,
+        });
       }
     } catch (e) {
       console.warn("Toggle step error:", e);
@@ -173,16 +204,31 @@ const CalendarioScreen = ({ navigation }) => {
             {weekDays.map((day) => (
               <View
                 key={day.dateStr}
-                style={[styles.dayBubble, day.isToday && styles.dayBubbleActive]}
+                style={[
+                  styles.dayBubble,
+                  day.isToday && styles.dayBubbleActive,
+                ]}
               >
-                <Text style={[styles.dayText, day.isToday && styles.dayTextActive]}>
+                <Text
+                  style={[styles.dayText, day.isToday && styles.dayTextActive]}
+                >
                   {day.label}
                 </Text>
-                <Text style={[styles.dayNumber, day.isToday && styles.dayNumberActive]}>
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    day.isToday && styles.dayNumberActive,
+                  ]}
+                >
                   {day.number}
                 </Text>
                 {datesWithEvents.has(day.dateStr) && (
-                  <View style={[styles.eventDot, day.isToday && styles.eventDotActive]} />
+                  <View
+                    style={[
+                      styles.eventDot,
+                      day.isToday && styles.eventDotActive,
+                    ]}
+                  />
                 )}
               </View>
             ))}
@@ -190,50 +236,61 @@ const CalendarioScreen = ({ navigation }) => {
         </View>
 
         {/* Events list */}
-        <ScrollView style={styles.eventsContainer} showsVerticalScrollIndicator={false}>
-          {sections.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Image
-                source={require("../../assets/milo/2.webp")}
-                style={styles.emptyMascot}
-                resizeMode="contain"
-              />
-              <Text style={styles.emptyTitle}>
-                Aún no tienes planes activos
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                Habla con milo para crear recordatorios de pago, metas de ahorro
-                o sesiones periódicas 💬
-              </Text>
-              <TouchableOpacity style={styles.emptyButton} onPress={handleGoToChat} activeOpacity={0.8}>
-                <LinearGradient
-                  colors={[theme.colors.primary, theme.colors.accent]}
-                  style={styles.emptyButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+        <ScrollView
+          style={styles.eventsContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {sections.map((section) => (
+            <View key={section.date} style={styles.sectionContainer}>
+              <View style={styles.sectionHeader}>
+                <Text
+                  style={[
+                    styles.sectionLabel,
+                    section.date === todayStr && styles.sectionLabelToday,
+                  ]}
                 >
-                  <Ionicons name="chatbubble-ellipses" size={20} color="#FFF" />
-                  <Text style={styles.emptyButtonText}>Hablar con milo</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            sections.map((section) => (
-              <View key={section.date} style={styles.sectionContainer}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionLabel, section.date === todayStr && styles.sectionLabelToday]}>
-                    {section.label}
-                  </Text>
-                  <View style={styles.sectionLine} />
-                </View>
+                  {section.label}
+                </Text>
+                <View style={styles.sectionLine} />
+              </View>
 
-                {section.data.map((event, idx) => (
+              {/* Placeholder cuando hoy no tiene eventos */}
+              {section.date === todayStr && section.data.length === 0 ? (
+                <View style={styles.todayEmptyCard}>
+                  <Image
+                    source={require("../../assets/milo/face.png")}
+                    style={styles.todayEmptyMilo}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.todayEmptyText}>
+                    <Text style={styles.todayEmptyTitle}>
+                      Nada pendiente por hoy
+                    </Text>
+                    <Text style={styles.todayEmptySubtitle}>
+                      ¡Buen día! Habla con milo para crear tareas o recordatorios.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.todayEmptyBtn}
+                      onPress={handleGoToChat}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.todayEmptyBtnText}>Hablar con milo</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                section.data.map((event, idx) => {
+                  const isToday = section.date === todayStr;
+                  return (
                   <TouchableOpacity
                     key={`${event.planId}-${event.date}-${idx}`}
-                    style={styles.eventCard}
-                    activeOpacity={0.85}
-                    onPress={event.type === "session" ? handleGoToChat : undefined}
-                    onLongPress={() => handleDelete(event.planId)}
+                    style={[styles.eventCard, !isToday && styles.eventCardDisabled]}
+                    activeOpacity={isToday ? 0.85 : 1}
+                    disabled={!isToday}
+                    onPress={
+                      isToday && event.type === "session" ? handleGoToChat : undefined
+                    }
+                    onLongPress={isToday ? () => handleDelete(event.planId) : undefined}
                   >
                     <LinearGradient
                       colors={event.colors}
@@ -247,7 +304,9 @@ const CalendarioScreen = ({ navigation }) => {
                         </View>
                         <View style={styles.eventInfo}>
                           <Text style={styles.eventTitle}>{event.title}</Text>
-                          <Text style={styles.eventDescription}>{event.description}</Text>
+                          <Text style={styles.eventDescription}>
+                            {event.description}
+                          </Text>
 
                           {event.type === "reminder" && event.amount && (
                             <View style={styles.amountBadge}>
@@ -260,11 +319,25 @@ const CalendarioScreen = ({ navigation }) => {
                           {event.type === "checklist" && (
                             <View style={styles.checklistRow}>
                               <TouchableOpacity
-                                style={[styles.checkToggle, event.done && styles.checkToggleDone]}
-                                onPress={() => handleToggleStep(event.planId, event.stepIndex)}
+                                style={[
+                                  styles.checkToggle,
+                                  event.done && styles.checkToggleDone,
+                                  !isToday && styles.checkToggleDisabled,
+                                ]}
+                                disabled={!isToday}
+                                onPress={() =>
+                                  isToday && handleToggleStep(
+                                    event.planId,
+                                    event.stepIndex,
+                                  )
+                                }
                               >
                                 <Ionicons
-                                  name={event.done ? "checkmark-circle" : "ellipse-outline"}
+                                  name={
+                                    event.done
+                                      ? "checkmark-circle"
+                                      : "ellipse-outline"
+                                  }
                                   size={22}
                                   color="#FFF"
                                 />
@@ -280,8 +353,14 @@ const CalendarioScreen = ({ navigation }) => {
 
                           {event.type === "session" && (
                             <View style={styles.sessionCTA}>
-                              <Ionicons name="chatbubble" size={14} color="#FFF" />
-                              <Text style={styles.sessionCTAText}>Abrir chat</Text>
+                              <Ionicons
+                                name="chatbubble"
+                                size={14}
+                                color="#FFF"
+                              />
+                              <Text style={styles.sessionCTAText}>
+                                {isToday ? "Abrir chat" : "Disponible ese día"}
+                              </Text>
                             </View>
                           )}
                         </View>
@@ -289,10 +368,15 @@ const CalendarioScreen = ({ navigation }) => {
 
                       <TouchableOpacity
                         style={styles.deleteButton}
-                        onPress={() => handleDelete(event.planId)}
+                        onPress={isToday ? () => handleDelete(event.planId) : undefined}
+                        disabled={!isToday}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Ionicons name="trash-outline" size={16} color="rgba(255,255,255,0.7)" />
+                        <Ionicons
+                          name="trash-outline"
+                          size={16}
+                          color={isToday ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.25)"}
+                        />
                       </TouchableOpacity>
 
                       <View style={styles.cornerDeco}>
@@ -301,10 +385,11 @@ const CalendarioScreen = ({ navigation }) => {
                       </View>
                     </LinearGradient>
                   </TouchableOpacity>
-                ))}
-              </View>
-            ))
-          )}
+                  );
+                })
+              )}
+            </View>
+          ))}
 
           {plans.length > 0 && (
             <View style={styles.motivacionContainer}>
@@ -324,7 +409,8 @@ const CalendarioScreen = ({ navigation }) => {
                     ¡Vas por buen camino! 💪
                   </Text>
                   <Text style={styles.motivacionTexto}>
-                    Sigue así y cumplirás todas tus metas financieras. milo está contigo.
+                    Sigue así y cumplirás todas tus metas financieras. milo está
+                    contigo.
                   </Text>
                 </View>
               </LinearGradient>
@@ -342,60 +428,316 @@ const createStyles = (theme) =>
   StyleSheet.create({
     screen: { flex: 1 },
     container: { flex: 1, paddingTop: 60 },
-    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 20 },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      marginBottom: 20,
+    },
     headerContent: { flex: 1 },
-    headerTitle: { fontSize: 28, fontWeight: "800", color: theme.colors.textPrimary, marginBottom: 4 },
-    headerSubtitle: { fontSize: 15, color: theme.colors.textSecondary, fontWeight: "600" },
+    headerTitle: {
+      fontSize: 28,
+      fontWeight: "800",
+      color: theme.colors.textPrimary,
+      marginBottom: 4,
+    },
+    headerSubtitle: {
+      fontSize: 15,
+      color: theme.colors.textSecondary,
+      fontWeight: "600",
+    },
     mascotHeader: { width: 80, height: 80, marginLeft: 12 },
     weekContainer: { marginBottom: 20, paddingVertical: 8 },
     weekScroll: { paddingHorizontal: 16, paddingVertical: 4 },
-    dayBubble: { alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.surface, borderRadius: 20, paddingVertical: 14, paddingHorizontal: 16, marginHorizontal: 4, minWidth: 60, borderWidth: 3, borderColor: theme.colors.border },
-    dayBubbleActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary, transform: [{ scale: 1.05 }] },
-    dayText: { fontSize: 11, fontWeight: "700", color: theme.colors.textMuted, marginBottom: 4 },
+    dayBubble: {
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.surface,
+      borderRadius: 20,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      marginHorizontal: 4,
+      minWidth: 60,
+      borderWidth: 3,
+      borderColor: theme.colors.border,
+    },
+    dayBubbleActive: {
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
+      transform: [{ scale: 1.05 }],
+    },
+    dayText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: theme.colors.textMuted,
+      marginBottom: 4,
+    },
     dayTextActive: { color: "#FFF" },
-    dayNumber: { fontSize: 18, fontWeight: "800", color: theme.colors.textPrimary },
+    dayNumber: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: theme.colors.textPrimary,
+    },
     dayNumberActive: { color: "#FFF" },
-    eventDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.primary, marginTop: 4 },
+    eventDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: theme.colors.primary,
+      marginTop: 4,
+    },
     eventDotActive: { backgroundColor: "#FFF" },
     eventsContainer: { flex: 1 },
     sectionContainer: { marginBottom: 8, paddingHorizontal: 20 },
-    sectionHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 4 },
-    sectionLabel: { fontSize: 14, fontWeight: "800", color: theme.colors.textSecondary, textTransform: "uppercase", letterSpacing: 1, marginRight: 10 },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+      marginTop: 4,
+    },
+    sectionLabel: {
+      fontSize: 14,
+      fontWeight: "800",
+      color: theme.colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginRight: 10,
+    },
     sectionLabelToday: { color: theme.colors.primary },
     sectionLine: { flex: 1, height: 1, backgroundColor: theme.colors.border },
-    eventCard: { marginBottom: 14, borderRadius: 22, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8 },
+    eventCard: {
+      marginBottom: 14,
+      borderRadius: 22,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    eventCardDisabled: {
+      opacity: 0.45,
+    },
     eventGradient: { padding: 18, minHeight: 110, position: "relative" },
     eventRow: { flexDirection: "row", alignItems: "flex-start" },
-    eventIconCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(255,255,255,0.25)", justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)", marginRight: 14 },
+    eventIconCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: "rgba(255,255,255,0.25)",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: "rgba(255,255,255,0.4)",
+      marginRight: 14,
+    },
     eventInfo: { flex: 1 },
-    eventTitle: { fontSize: 17, fontWeight: "800", color: "#FFF", marginBottom: 4, textShadowColor: "rgba(0,0,0,0.25)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
-    eventDescription: { fontSize: 13, fontWeight: "600", color: "#FFF", opacity: 0.92, lineHeight: 19, marginBottom: 6 },
-    amountBadge: { backgroundColor: "rgba(255,255,255,0.3)", alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.5)", marginTop: 4 },
+    eventTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+      color: "#FFF",
+      marginBottom: 4,
+      textShadowColor: "rgba(0,0,0,0.25)",
+      textShadowOffset: { width: 1, height: 1 },
+      textShadowRadius: 3,
+    },
+    eventDescription: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: "#FFF",
+      opacity: 0.92,
+      lineHeight: 19,
+      marginBottom: 6,
+    },
+    amountBadge: {
+      backgroundColor: "rgba(255,255,255,0.3)",
+      alignSelf: "flex-start",
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: "rgba(255,255,255,0.5)",
+      marginTop: 4,
+    },
     amountText: { color: "#FFF", fontSize: 15, fontWeight: "900" },
     checklistRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
-    checkToggle: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.25)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.4)" },
+    checkToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(255,255,255,0.25)",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: "rgba(255,255,255,0.4)",
+    },
     checkToggleDone: { backgroundColor: "rgba(255,255,255,0.45)" },
-    checkToggleText: { color: "#FFF", fontWeight: "700", fontSize: 13, marginLeft: 6 },
-    checkProgress: { color: "#FFF", fontSize: 13, fontWeight: "800", marginLeft: 10, opacity: 0.85 },
-    sessionCTA: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, marginTop: 4 },
-    sessionCTAText: { color: "#FFF", fontSize: 13, fontWeight: "700", marginLeft: 6 },
-    deleteButton: { position: "absolute", top: 12, right: 12, backgroundColor: "rgba(0,0,0,0.15)", borderRadius: 14, padding: 6 },
+    checkToggleDisabled: { opacity: 0.5 },
+    checkToggleText: {
+      color: "#FFF",
+      fontWeight: "700",
+      fontSize: 13,
+      marginLeft: 6,
+    },
+    checkProgress: {
+      color: "#FFF",
+      fontSize: 13,
+      fontWeight: "800",
+      marginLeft: 10,
+      opacity: 0.85,
+    },
+    sessionCTA: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(255,255,255,0.2)",
+      alignSelf: "flex-start",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      marginTop: 4,
+    },
+    sessionCTAText: {
+      color: "#FFF",
+      fontSize: 13,
+      fontWeight: "700",
+      marginLeft: 6,
+    },
+    deleteButton: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      backgroundColor: "rgba(0,0,0,0.15)",
+      borderRadius: 14,
+      padding: 6,
+    },
     cornerDeco: { position: "absolute", right: -10, bottom: -10 },
-    cornerCircle1: { width: 50, height: 50, borderRadius: 25, backgroundColor: "rgba(255,255,255,0.1)" },
-    cornerCircle2: { width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.15)", position: "absolute", top: 10, left: 10 },
-    emptyContainer: { alignItems: "center", justifyContent: "center", paddingHorizontal: 40, paddingTop: 60 },
+    cornerCircle1: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: "rgba(255,255,255,0.1)",
+    },
+    cornerCircle2: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      position: "absolute",
+      top: 10,
+      left: 10,
+    },
+    emptyContainer: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 40,
+      paddingTop: 60,
+    },
+    // Placeholder de hoy sin eventos
+    todayEmptyCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      padding: 16,
+      marginBottom: 14,
+    },
+    todayEmptyMilo: {
+      width: 52,
+      height: 52,
+      marginRight: 14,
+    },
+    todayEmptyText: {
+      flex: 1,
+    },
+    todayEmptyTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+      color: theme.colors.textPrimary,
+      marginBottom: 4,
+    },
+    todayEmptySubtitle: {
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+      lineHeight: 17,
+      marginBottom: 10,
+    },
+    todayEmptyBtn: {
+      alignSelf: "flex-start",
+      backgroundColor: theme.colors.primary,
+      borderRadius: 20,
+      paddingVertical: 7,
+      paddingHorizontal: 16,
+    },
+    todayEmptyBtnText: {
+      color: "#FFF",
+      fontSize: 12,
+      fontWeight: "700",
+    },
     emptyMascot: { width: 120, height: 120, marginBottom: 20 },
-    emptyTitle: { fontSize: 20, fontWeight: "800", color: theme.colors.textPrimary, marginBottom: 10, textAlign: "center" },
-    emptySubtitle: { fontSize: 15, fontWeight: "600", color: theme.colors.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 24 },
+    emptyTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      color: theme.colors.textPrimary,
+      marginBottom: 10,
+      textAlign: "center",
+    },
+    emptySubtitle: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      lineHeight: 22,
+      marginBottom: 24,
+    },
     emptyButton: { borderRadius: 24, overflow: "hidden" },
-    emptyButtonGradient: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 14, borderRadius: 24 },
-    emptyButtonText: { color: "#FFF", fontSize: 16, fontWeight: "800", marginLeft: 8 },
+    emptyButtonGradient: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderRadius: 24,
+    },
+    emptyButtonText: {
+      color: "#FFF",
+      fontSize: 16,
+      fontWeight: "800",
+      marginLeft: 8,
+    },
     motivacionContainer: { paddingHorizontal: 20, marginTop: 20 },
-    motivacionCard: { borderRadius: 24, padding: 20, flexDirection: "row", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 10, borderWidth: 3, borderColor: "rgba(255,255,255,0.3)" },
+    motivacionCard: {
+      borderRadius: 24,
+      padding: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      elevation: 10,
+      borderWidth: 3,
+      borderColor: "rgba(255,255,255,0.3)",
+    },
     mascotMotivacion: { width: 70, height: 70, marginRight: 16 },
     motivacionContent: { flex: 1 },
-    motivacionTitulo: { fontSize: 18, fontWeight: "800", color: "#FFF", marginBottom: 6, textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
-    motivacionTexto: { fontSize: 14, fontWeight: "600", color: "#FFF", opacity: 0.95, lineHeight: 20 },
+    motivacionTitulo: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: "#FFF",
+      marginBottom: 6,
+      textShadowColor: "rgba(0,0,0,0.3)",
+      textShadowOffset: { width: 1, height: 1 },
+      textShadowRadius: 3,
+    },
+    motivacionTexto: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#FFF",
+      opacity: 0.95,
+      lineHeight: 20,
+    },
   });
 
 export default CalendarioScreen;

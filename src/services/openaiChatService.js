@@ -171,6 +171,14 @@ FLUJO DE CONFIRMACIÓN DE PLANES:
   → Si el mensaje del usuario no tiene nada que ver con el plan, pon userConfirmedPlan = false, pendingPlanData = null, y responde al tema nuevo.
 - userConfirmedPlan SOLO puede ser true cuando había un pendingPlan en el contexto Y el usuario claramente lo aceptó.
 
+══════════ LOGROS PERSONALES ══════════
+
+Si el usuario cuenta un logro financiero personal (pagó una deuda, consiguió un aumento, alcanzó una meta de ahorro, compró algo importante que planeó, etc.), regístralo como un logro:
+- Pon "personalMilestone" con un título corto y un detalle breve.
+- Solo cuando sea un logro REAL y concreto que el usuario mencione — no inventes logros.
+- Ejemplos: "Pagué toda mi tarjeta de crédito", "Me subieron el sueldo", "Ahorré para mi fondo de emergencia", "Compré mi portátil sin endeudarme".
+- El título debe ser corto (3-6 palabras). El detalle 1 oración máximo.
+
 ══════════ FORMATO DE SALIDA ══════════
 
 Responde SOLO JSON válido:
@@ -206,6 +214,10 @@ Responde SOLO JSON válido:
   "planUpdateData": {
     "planId": "string (ID del plan existente a modificar)",
     "...campos a actualizar (title, description, amount, frequency, startDate, endDate, steps, etc.)"
+  },
+  "personalMilestone": {
+    "title": "string (3-6 palabras)",
+    "detail": "string (1 oración)"
   }
 }
 `;
@@ -439,6 +451,15 @@ export const getMiloChatResponse = async ({
       ? rawUpdate
       : null;
 
+  // ── Personal milestone (user-reported achievement) ──
+  const rawMilestone = parsed?.personalMilestone || null;
+  const personalMilestone =
+    rawMilestone &&
+    typeof rawMilestone.title === "string" &&
+    rawMilestone.title.trim().length > 0
+      ? rawMilestone
+      : null;
+
   return {
     assistantMessage: sanitizeMiloMessage(baseAssistantMessage),
     shouldUpdateProfile,
@@ -452,5 +473,6 @@ export const getMiloChatResponse = async ({
     userConfirmedPlan: Boolean(parsed?.userConfirmedPlan),
     pendingPlanData,
     planUpdateData,
+    personalMilestone,
   };
 };

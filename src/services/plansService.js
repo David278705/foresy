@@ -112,9 +112,27 @@ const generateSessionOccurrences = (plan, maxCount = 30) => {
 
 export const createPlan = async (uid, planData) => {
   const ref = collection(db, PLANS_COLLECTION);
+
+  // Sanitizar antes de guardar
+  const sanitized = { ...planData };
+  if (sanitized.startDate) sanitized.startDate = normalizeDate(sanitized.startDate);
+  if (sanitized.endDate) sanitized.endDate = normalizeDate(sanitized.endDate);
+  if (sanitized.amount !== undefined) sanitized.amount = normalizeAmount(sanitized.amount);
+  if (sanitized.steps) {
+    sanitized.steps = sanitized.steps.map((s) => ({
+      ...s,
+      date: normalizeDate(s.date),
+      label: s.label || "Paso",
+      done: Boolean(s.done),
+    }));
+  }
+  sanitized.title = sanitized.title || "Plan";
+  sanitized.description = sanitized.description || "";
+  sanitized.frequency = sanitized.frequency || (sanitized.type === "reminder" ? "once" : "weekly");
+
   const docRef = await addDoc(ref, {
     userId: uid,
-    ...planData,
+    ...sanitized,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -165,10 +183,7 @@ export const updatePlanFrequency = async (planId, newFrequency) => {
 export const subscribeToPlans = (uid, callback) => {
   // Solo filtramos por userId (no requiere índice compuesto).
   // El ordenamiento se hace en el cliente.
-  const q = query(
-    collection(db, PLANS_COLLECTION),
-    where("userId", "==", uid),
-  );
+  const q = query(collection(db, PLANS_COLLECTION), where("userId", "==", uid));
 
   return onSnapshot(
     q,
@@ -194,23 +209,60 @@ export const subscribeToPlans = (uid, callback) => {
 
 // ─── Construir eventos para el calendario ───────
 
+/**
+ * Normaliza un valor de fecha a YYYY-MM-DD.
+ * Si ya tiene ese formato lo devuelve tal cual.
+ * Si es inválido devuelve today().
+ */
+const normalizeDate = (value) => {
+  if (!value) return today();
+  const s = String(value).trim();
+  // Formato YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Intentar parsear cualquier otra cosa
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return today();
+};
+
+/**
+ * Normaliza un monto: acepta string con puntos/comas y devuelve número.
+ * Ej: "1.200.000" → 1200000,  "1,200,000" → 1200000
+ */
+const normalizeAmount = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(/\./g, "").replace(/,/g, ""));
+  return isNaN(n) ? null : n;
+};
+
 export const buildCalendarEvents = (plans, maxEvents = 10) => {
   const todayStr = today();
   const events = [];
 
   for (const plan of plans) {
     if (plan.type === "reminder") {
-      const dates = generateReminderOccurrences(plan, 60);
+      const safePlan = {
+        ...plan,
+        startDate: normalizeDate(plan.startDate),
+        endDate: plan.endDate ? normalizeDate(plan.endDate) : null,
+        amount: normalizeAmount(plan.amount),
+        title: plan.title || "Recordatorio",
+        description: plan.description || "",
+        frequency: plan.frequency || "once",
+      };
+      const dates = generateReminderOccurrences(safePlan, 60);
       for (const date of dates) {
         if (date < todayStr) continue;
         events.push({
           planId: plan.id,
           type: "reminder",
           date,
-          title: plan.title,
-          description: plan.description,
-          amount: plan.amount || null,
-          frequency: plan.frequency,
+          title: safePlan.title,
+          description: safePlan.description,
+          amount: safePlan.amount,
+          frequency: safePlan.frequency,
           icon: "notifications",
           colors: ["#EF4444", "#F87171"],
         });
@@ -218,7 +270,12 @@ export const buildCalendarEvents = (plans, maxEvents = 10) => {
     }
 
     if (plan.type === "checklist") {
-      const steps = plan.steps || [];
+      const steps = (plan.steps || []).map((s) => ({
+        ...s,
+        date: normalizeDate(s.date),
+        label: s.label || "Paso",
+        done: Boolean(s.done),
+      }));
       for (const step of steps) {
         if (step.date < todayStr) continue;
         events.push({
@@ -226,9 +283,9 @@ export const buildCalendarEvents = (plans, maxEvents = 10) => {
           stepIndex: steps.indexOf(step),
           type: "checklist",
           date: step.date,
-          title: plan.title,
+          title: plan.title || "Meta",
           description: step.label,
-          done: Boolean(step.done),
+          done: step.done,
           totalSteps: steps.length,
           completedSteps: steps.filter((s) => s.done).length,
           icon: "checkbox",
@@ -238,7 +295,13 @@ export const buildCalendarEvents = (plans, maxEvents = 10) => {
     }
 
     if (plan.type === "session") {
-      const dates = generateSessionOccurrences(plan, 30);
+      const safePlan = {
+        ...plan,
+        startDate: normalizeDate(plan.startDate),
+        title: plan.title || "Sesión con milo",
+        frequency: plan.frequency || "weekly",
+      };
+      const dates = generateSessionOccurrences(safePlan, 30);
       for (const date of dates) {
         if (date < todayStr) continue;
         events.push({
@@ -247,7 +310,7 @@ export const buildCalendarEvents = (plans, maxEvents = 10) => {
           date,
           title: "Hablar con milo",
           description: plan.description || "Cuéntale a milo cómo te fue con tu plata",
-          frequency: plan.frequency,
+          frequency: safePlan.frequency,
           icon: "chatbubble-ellipses",
           colors: ["#8B5CF6", "#A78BFA"],
         });

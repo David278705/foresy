@@ -138,14 +138,11 @@ const RegisterScreen = ({ navigation }) => {
                 onPress={handleRegister}
                 disabled={loading}
               >
-                <LinearGradient
-                  colors={theme.gradients.primary}
-                  style={globalStyles.primaryButton}
-                >
+                <View style={[globalStyles.primaryButton, { backgroundColor: theme.colors.primary }]}>
                   <Text style={globalStyles.primaryButtonText}>
                     {loading ? "Creando cuenta..." : "Crear cuenta"}
                   </Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity

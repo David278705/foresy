@@ -198,14 +198,11 @@ const IntroScreen = () => {
               style={styles.primaryButtonWrap}
               onPress={handleNext}
             >
-              <LinearGradient
-                colors={theme.gradients.primary}
-                style={globalStyles.primaryButton}
-              >
+              <View style={[globalStyles.primaryButton, { backgroundColor: theme.colors.primary }]}>
                 <Text style={globalStyles.primaryButtonText}>
                   {stepIndex < INTRO_STEPS.length - 1 ? "Siguiente" : "Empezar"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </View>
         </View>

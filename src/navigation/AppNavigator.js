@@ -18,12 +18,14 @@ import CalendarioScreen from "../screens/CalendarioScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import IntroScreen from "../screens/IntroScreen";
 import FinancialSetupScreen from "../screens/FinancialSetupScreen";
+import ProgressScreen from "../screens/ProgressScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const screenIcon = {
   Inicio: "home",
+  Progreso: "trophy",
   Calendario: "calendar",
   Perfil: "person-circle",
 };
@@ -77,6 +79,7 @@ const MainTabs = () => {
       })}
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
+      <Tab.Screen name="Progreso" component={ProgressScreen} />
       <Tab.Screen name="Chat" component={ChatScreen} />
       <Tab.Screen name="Calendario" component={CalendarioScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
